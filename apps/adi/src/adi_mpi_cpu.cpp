@@ -826,7 +826,19 @@ int main(int argc, char* argv[]) {
   MPI_Reduce(app.elapsed_time,app.timers_avg,TIMERS,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
   for(int i=0; i<TIMERS; i++)
     app.timers_avg[i] /= mpi.procs;*/
+  
+  double avg_total = 0.0;
 
+  MPI_Reduce(app.elapsed_time_x,app.timers_avg,TIMERS,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
+  MPI_Reduce(&elapsed_trid_x,&avg_total,1,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
+  
+  if(mpi.rank == 0) {
+    for(int i=0; i<TIMERS; i++)
+        app.timers_avg[i] /= mpi.procs;
+    
+    avg_total /= mpi.procs;
+  }
+  
   for(int i=0; i<mpi.procs; i++) {
     MPI_Barrier(MPI_COMM_WORLD);
     //sleep(0.2);
@@ -848,6 +860,33 @@ int main(int argc, char* argv[]) {
       1000.0*app.elapsed_time_x[8],
       1000.0*(app.elapsed_time_x[0] + app.elapsed_time_x[1] + app.elapsed_time_x[2] + app.elapsed_time_x[3] + app.elapsed_time_x[4] + app.elapsed_time_x[5] + app.elapsed_time_x[6] + app.elapsed_time_x[7] + app.elapsed_time_x[8]));
     }
+  }
+  
+  MPI_Barrier(MPI_COMM_WORLD);
+  if(mpi.rank == 0) {
+    printf("Avg:\n");
+    printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
+        1000.0*avg_total ,
+        1000.0*app.timers_avg[0],
+        1000.0*app.timers_avg[1],
+        1000.0*app.timers_avg[2],
+        1000.0*app.timers_avg[3],
+        1000.0*app.timers_avg[4],
+        1000.0*app.timers_avg[5],
+        1000.0*app.timers_avg[6],
+        1000.0*app.timers_avg[7],
+        1000.0*app.timers_avg[8]);
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
+  
+  MPI_Reduce(app.elapsed_time_y,app.timers_avg,TIMERS,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
+  MPI_Reduce(&elapsed_trid_y,&avg_total,1,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
+  
+  if(mpi.rank == 0) {
+    for(int i=0; i<TIMERS; i++)
+        app.timers_avg[i] /= mpi.procs;
+    
+    avg_total /= mpi.procs;
   }
   
   for(int i=0; i<mpi.procs; i++) {
@@ -873,6 +912,33 @@ int main(int argc, char* argv[]) {
     }
   }
   
+  MPI_Barrier(MPI_COMM_WORLD);
+  if(mpi.rank == 0) {
+    printf("Avg:\n");
+    printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
+        1000.0*avg_total ,
+        1000.0*app.timers_avg[0],
+        1000.0*app.timers_avg[1],
+        1000.0*app.timers_avg[2],
+        1000.0*app.timers_avg[3],
+        1000.0*app.timers_avg[4],
+        1000.0*app.timers_avg[5],
+        1000.0*app.timers_avg[6],
+        1000.0*app.timers_avg[7],
+        1000.0*app.timers_avg[8]);
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
+  
+  MPI_Reduce(app.elapsed_time_z,app.timers_avg,TIMERS,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
+  MPI_Reduce(&elapsed_trid_z,&avg_total,1,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
+  
+  if(mpi.rank == 0) {
+    for(int i=0; i<TIMERS; i++)
+        app.timers_avg[i] /= mpi.procs;
+    
+    avg_total /= mpi.procs;
+  }
+  
   for(int i=0; i<mpi.procs; i++) {
     MPI_Barrier(MPI_COMM_WORLD);
     //sleep(0.2);
@@ -894,6 +960,22 @@ int main(int argc, char* argv[]) {
       1000.0*app.elapsed_time_z[8],
       1000.0*(app.elapsed_time_z[0] + app.elapsed_time_z[1] + app.elapsed_time_z[2] + app.elapsed_time_z[3] + app.elapsed_time_z[4] + app.elapsed_time_z[5] + app.elapsed_time_z[6] + app.elapsed_time_z[7] + app.elapsed_time_z[8]));
     }
+  }
+  
+  MPI_Barrier(MPI_COMM_WORLD);
+  if(mpi.rank == 0) {
+    printf("Avg:\n");
+    printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
+        1000.0*avg_total ,
+        1000.0*app.timers_avg[0],
+        1000.0*app.timers_avg[1],
+        1000.0*app.timers_avg[2],
+        1000.0*app.timers_avg[3],
+        1000.0*app.timers_avg[4],
+        1000.0*app.timers_avg[5],
+        1000.0*app.timers_avg[6],
+        1000.0*app.timers_avg[7],
+        1000.0*app.timers_avg[8]);
   }
   
   MPI_Barrier(MPI_COMM_WORLD);

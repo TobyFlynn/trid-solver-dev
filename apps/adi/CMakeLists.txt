@@ -59,7 +59,7 @@ endif (INTEL_CC)
 
 #set(CMAKE_GENERATOR_TOOLSET "Intel C++ Compiler XE 15.0" CACHE STRING "Platform Toolset" FORCE)
 
-set(LIBTRID_PATH "/home/toby/Uni/3rd-Year-Project/tridiagonal/tridsolver/scalar/build")
+set(LIBTRID_PATH "/home/toby/Uni/3rd-Year-Project/dev-tridiagonal/tridsolver/scalar/build")
 
 set(N_MAX 1024 CACHE STRING "Maximum length of the internal buffer for storing intermediate c and d vectors of the Thomas algorithm") 
 add_definitions(-DN_MAX=${N_MAX}) 
