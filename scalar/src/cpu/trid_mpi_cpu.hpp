@@ -511,7 +511,7 @@ inline void thomas_forward_transpose_vec(
 //
 // Modified Thomas forwards pass
 //
-template<typename REAL>
+/*template<typename REAL>
 inline void thomas_forward_vec(
     const REAL *__restrict__ a, 
     const REAL *__restrict__ b, 
@@ -632,8 +632,7 @@ inline void thomas_forward_vec(
   else {
     exit(-1);
   }
-  */
-}
+}*/
 
 //
 // Modified Thomas backward pass
@@ -678,5 +677,201 @@ inline void thomas_backwardInc(
     u[ind] += dd[ind] - aa[ind]*dd[0] - cc[ind]*dd[(N-1) * stride];
   }
   u[(N-1) * stride] += dd[(N-1) * stride];
+}
+
+template<typename REAL>
+inline void thomas_backwardInc_transpose_vec(
+    const REAL *__restrict__ aa, 
+    const REAL *__restrict__ cc, 
+    const REAL *__restrict__ dd, 
+          REAL *__restrict__ u, 
+    int N, 
+    int sys_pad,
+    int stride) {
+  
+  SIMD_REG a_reg[SIMD_VEC];
+  SIMD_REG c_reg[SIMD_VEC];
+  SIMD_REG d_reg[SIMD_VEC];
+  SIMD_REG u_reg[SIMD_VEC];
+  
+  SIMD_REG dd_s, dd_e;
+  
+  REAL start[SIMD_VEC];
+  REAL end[SIMD_VEC];
+  
+  for(int i = 0; i < SIMD_VEC; i++) {
+    start[i] = dd[i * sys_pad];
+    end[i] = dd[i * sys_pad + N - 1];
+  }
+  
+  dd_s = *((SIMD_REG *)start);
+  dd_e = *((SIMD_REG *)end);
+  
+  SIMD_REG tmp1, tmp2;
+  
+  int n = 0;
+  
+  LOAD(a_reg, aa, 0, sys_pad);
+  LOAD(c_reg, cc, 0, sys_pad);
+  LOAD(d_reg, dd, 0, sys_pad);
+  LOAD(u_reg, u, 0, sys_pad);
+  
+  u_reg[0] = SIMD_ADD_P(u_reg[0], dd_s);
+  
+  for(int i = 1; i < SIMD_VEC; i++) {
+    tmp1 = SIMD_MUL_P(c_reg[i], dd_e);
+    tmp2 = SIMD_MUL_P(a_reg[i], dd_s);
+    tmp2 = SIMD_SUB_P(d_reg[i], tmp2);
+    tmp2 = SIMD_SUB_P(tmp2, tmp1);
+    u_reg[i] = SIMD_ADD_P(u_reg[i], tmp2);
+  }
+  
+  STORE(u, u_reg, 0, sys_pad);
+  
+  for(n = SIMD_VEC; n < ((N / SIMD_VEC) - 1) * SIMD_VEC; n += SIMD_VEC) {
+    LOAD(a_reg, aa, n, sys_pad);
+    LOAD(c_reg, cc, n, sys_pad);
+    LOAD(d_reg, dd, n, sys_pad);
+    LOAD(u_reg, u, n, sys_pad);
+    for(int i = 0; i < SIMD_VEC; i++) {
+      tmp1 = SIMD_MUL_P(c_reg[i], dd_e);
+      tmp2 = SIMD_MUL_P(a_reg[i], dd_s);
+      tmp2 = SIMD_SUB_P(d_reg[i], tmp2);
+      tmp2 = SIMD_SUB_P(tmp2, tmp1);
+      u_reg[i] = SIMD_ADD_P(u_reg[i], tmp2);
+    }
+    STORE(u, u_reg, n, sys_pad);
+  }
+  
+  if(N != sys_pad) {
+    n = ((N / SIMD_VEC) - 1) * SIMD_VEC;
+    LOAD(a_reg, aa, n, sys_pad);
+    LOAD(c_reg, cc, n, sys_pad);
+    LOAD(d_reg, dd, n, sys_pad);
+    LOAD(u_reg, u, n, sys_pad);
+    for(int i = 0; i < SIMD_VEC; i++) {
+      tmp1 = SIMD_MUL_P(c_reg[i], dd_e);
+      tmp2 = SIMD_MUL_P(a_reg[i], dd_s);
+      tmp2 = SIMD_SUB_P(d_reg[i], tmp2);
+      tmp2 = SIMD_SUB_P(tmp2, tmp1);
+      u_reg[i] = SIMD_ADD_P(u_reg[i], tmp2);
+    }
+    STORE(u, u_reg, n, sys_pad);
+    
+    n = (N / SIMD_VEC) * SIMD_VEC;
+    LOAD(a_reg, aa, n, sys_pad);
+    LOAD(c_reg, cc, n, sys_pad);
+    LOAD(d_reg, dd, n, sys_pad);
+    LOAD(u_reg, u, n, sys_pad);
+    int i;
+    for(i = 0; i < (n + i) < N - 1; i++) {
+      tmp1 = SIMD_MUL_P(c_reg[i], dd_e);
+      tmp2 = SIMD_MUL_P(a_reg[i], dd_s);
+      tmp2 = SIMD_SUB_P(d_reg[i], tmp2);
+      tmp2 = SIMD_SUB_P(tmp2, tmp1);
+      u_reg[i] = SIMD_ADD_P(u_reg[i], tmp2);
+    }
+    u_reg[i] = SIMD_ADD_P(u_reg[i], dd_e);
+    STORE(u, u_reg, n, sys_pad);
+  } else {
+    n = ((N / SIMD_VEC) - 1) * SIMD_VEC;
+    LOAD(a_reg, aa, n, sys_pad);
+    LOAD(c_reg, cc, n, sys_pad);
+    LOAD(d_reg, dd, n, sys_pad);
+    LOAD(u_reg, u, n, sys_pad);
+    for(int i = 0; i < SIMD_VEC - 1; i++) {
+      tmp1 = SIMD_MUL_P(c_reg[i], dd_e);
+      tmp2 = SIMD_MUL_P(a_reg[i], dd_s);
+      tmp2 = SIMD_SUB_P(d_reg[i], tmp2);
+      tmp2 = SIMD_SUB_P(tmp2, tmp1);
+      u_reg[i] = SIMD_ADD_P(u_reg[i], tmp2);
+    }
+    u_reg[SIMD_VEC - 1] = SIMD_ADD_P(u_reg[SIMD_VEC - 1], dd_e);
+    
+    STORE(u, u_reg, n, sys_pad);
+  }
+}
+
+template<typename REAL>
+inline void thomas_backward_transpose_vec(
+    const REAL *__restrict__ aa, 
+    const REAL *__restrict__ cc, 
+    const REAL *__restrict__ dd, 
+          REAL *__restrict__ d, 
+    int N, 
+    int sys_pad,
+    int stride) {
+  
+  SIMD_REG a_reg[SIMD_VEC];
+  SIMD_REG c_reg[SIMD_VEC];
+  SIMD_REG d_reg[SIMD_VEC];
+  
+  SIMD_REG dd_s, dd_e;
+  
+  REAL start[SIMD_VEC];
+  REAL end[SIMD_VEC];
+  
+  for(int i = 0; i < SIMD_VEC; i++) {
+    start[i] = dd[i * sys_pad];
+    end[i] = dd[i * sys_pad + N - 1];
+  }
+  
+  dd_s = *((SIMD_REG *)start);
+  dd_e = *((SIMD_REG *)end);
+  
+  SIMD_REG tmp1, tmp2;
+  
+  int n = 0;
+  
+  LOAD(a_reg, aa, 0, sys_pad);
+  LOAD(c_reg, cc, 0, sys_pad);
+  LOAD(d_reg, dd, 0, sys_pad);
+  
+  d_reg[0] = dd_s;
+  
+  for(int i = 1; i < SIMD_VEC; i++) {
+    tmp1 = SIMD_MUL_P(c_reg[i], dd_e);
+    tmp2 = SIMD_MUL_P(a_reg[i], dd_s);
+    tmp2 = SIMD_SUB_P(d_reg[i], tmp2);
+    d_reg[i] = SIMD_SUB_P(tmp2, tmp1);
+  }
+  
+  STORE(d, d_reg, 0, sys_pad);
+  
+  for(n = SIMD_VEC; n < (N / SIMD_VEC) * SIMD_VEC; n += SIMD_VEC) {
+    LOAD(a_reg, aa, n, sys_pad);
+    LOAD(c_reg, cc, n, sys_pad);
+    LOAD(d_reg, dd, n, sys_pad);
+    for(int i = 0; i < SIMD_VEC; i++) {
+      tmp1 = SIMD_MUL_P(c_reg[i], dd_e);
+      tmp2 = SIMD_MUL_P(a_reg[i], dd_s);
+      tmp2 = SIMD_SUB_P(d_reg[i], tmp2);
+      d_reg[i] = SIMD_SUB_P(tmp2, tmp1);
+      
+    }
+    STORE(d, d_reg, n, sys_pad);
+  }
+  
+  if(N != sys_pad) {
+    n = (N / SIMD_VEC) * SIMD_VEC;
+    LOAD(a_reg, aa, n, sys_pad);
+    LOAD(c_reg, cc, n, sys_pad);
+    LOAD(d_reg, dd, n, sys_pad);
+    int i;
+    for(i = 0; i < (n + i) < N - 1; i++) {
+      tmp1 = SIMD_MUL_P(c_reg[i], dd_e);
+      tmp2 = SIMD_MUL_P(a_reg[i], dd_s);
+      tmp2 = SIMD_SUB_P(d_reg[i], tmp2);
+      d_reg[i] = SIMD_SUB_P(tmp2, tmp1);
+      
+    }
+    d_reg[i] = dd_e;
+    STORE(d, d_reg, n, sys_pad);
+  } else {
+    n = ((N / SIMD_VEC) - 1) * SIMD_VEC;
+    LOAD(d_reg, dd, n, sys_pad);
+    d_reg[SIMD_VEC - 1] = dd_e;
+    STORE(d, d_reg, n, sys_pad);
+  }
 }
 #endif

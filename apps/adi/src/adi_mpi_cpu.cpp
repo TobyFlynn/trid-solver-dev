@@ -438,10 +438,24 @@ int main(int argc, char* argv[]) {
     timing_start(app.prof, &timer2);
     
     #pragma omp parallel for
-    for(int id=0; id<app.n_sys_gx; id++) {
-      int base = id*app.nx_pad;
-      thomas_forward(&app.ax[base],&app.bx[base],&app.cx[base],&app.du[base],&app.h_u[base],
+    for(int k = 0; k < app.nz; k++) {
+      for(int j = 0; j < ROUND_DOWN(app.ny, SIMD_VEC); j+= SIMD_VEC) {
+        int base = k * app.nx_pad * app.ny + j * app.nx;
+        thomas_forward_transpose_vec(&app.ax[base],&app.bx[base],&app.cx[base],&app.du[base],
+                                     &app.h_u[base],&app.aa[base],&app.cc[base],&app.dd[base],
+                                     app.nx,app.nx_pad, 1);
+      }
+    }
+    
+    if(ROUND_DOWN(app.ny, SIMD_VEC) < app.ny) {
+      #pragma omp parallel for
+      for(int k = 0; k < app.nz; k++) {
+        for(int j = ROUND_DOWN(app.ny, SIMD_VEC); j < app.ny; j++) {
+          int base = k * app.nx_pad * app.ny + j * app.nx;
+          thomas_forward(&app.ax[base],&app.bx[base],&app.cx[base],&app.du[base],&app.h_u[base],
                      &app.aa[base],&app.cc[base],&app.dd[base],app.nx, 1);
+        }
+      }
     }
     
     timing_end(app.prof, &timer2, &app.elapsed_time_x[0], app.elapsed_name[0]);
@@ -531,7 +545,7 @@ int main(int argc, char* argv[]) {
 
     // Do the backward pass of modified Thomas
     timing_start(app.prof, &timer2);
-    #pragma omp parallel for
+    /*#pragma omp parallel for
     for(int id=0; id<app.n_sys_gx; id++) {
       int ind = id*app.nx_pad;
       //thomas_backward(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.h_u[ind],app.nx,1);
@@ -540,7 +554,34 @@ int main(int argc, char* argv[]) {
       } else {
         thomas_backward(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.du[ind],app.nx,1);
       }
+    }*/
+    
+    #pragma omp parallel for
+    for(int k = 0; k < app.nz; k++) {
+      for(int j = 0; j < ROUND_DOWN(app.ny, SIMD_VEC); j+= SIMD_VEC) {
+        int base = k * app.nx_pad * app.ny + j * app.nx;
+        if(INC) {
+          thomas_backwardInc_transpose_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.nx,app.nx_pad,1);
+        } else {
+          thomas_backward_transpose_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.du[base],app.nx,app.nx_pad,1);
+        }
+      }
     }
+    
+    if(ROUND_DOWN(app.ny, SIMD_VEC) < app.ny) {
+      #pragma omp parallel for
+      for(int k = 0; k < app.nz; k++) {
+        for(int j = ROUND_DOWN(app.ny, SIMD_VEC); j < app.ny; j++) {
+          int base = k * app.nx_pad * app.ny + j * app.nx;
+          if(INC) {
+            thomas_backwardInc(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.nx,1);
+          } else {
+            thomas_backward(&app.aa[base],&app.cc[base],&app.dd[base],&app.du[base],app.nx,1);
+          }
+        }
+      }
+    }
+    
     timing_end(app.prof, &timer2, &app.elapsed_time_x[8], app.elapsed_name[8]);
 
     MPI_Barrier(mpi.x_comm/*MPI_COMM_WORLD*/);
