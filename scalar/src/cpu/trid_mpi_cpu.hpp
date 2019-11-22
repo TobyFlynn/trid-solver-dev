@@ -41,6 +41,18 @@
 
 #define N_MPI_MAX 128
 
+inline void load(SIMD_REG *__restrict__ dst, const FP *__restrict__ src) {
+  __assume_aligned(src, SIMD_WIDTH);
+  __assume_aligned(dst, SIMD_WIDTH);
+  *dst = *(SIMD_REG *)&(src[0]);
+}
+
+inline void store(FP *__restrict__ dst, SIMD_REG *__restrict__ src) {
+  __assume_aligned(src, SIMD_WIDTH);
+  __assume_aligned(dst, SIMD_WIDTH);
+  *(SIMD_REG *)&(dst[0]) = *src;
+}
+
 ////
 //// Thomas solver for reduced system
 ////
@@ -188,6 +200,151 @@ inline void thomas_forward(
   else {
     exit(-1);
   }
+}
+
+//
+// Modified Thomas forwards pass
+//
+template<typename REAL>
+inline void thomas_forward_vec(
+    const REAL *__restrict__ a, 
+    const REAL *__restrict__ b, 
+    const REAL *__restrict__ c, 
+    const REAL *__restrict__ d, 
+    const REAL *__restrict__ u, 
+          REAL *__restrict__ aa, 
+          REAL *__restrict__ cc, 
+          REAL *__restrict__ dd, 
+    int N, 
+    int stride) {
+
+  /*REAL bbi;*/
+  int ind = 0;
+  
+  SIMD_REG av, bv, cv, dv, uv, aav, ccv, ddv, tmp;
+  
+  SIMD_REG ones = SIMD_SET1_P(1.0);
+  SIMD_REG minusOnes = SIMD_SET1_P(-1.0);
+  
+  int n = 0;
+  
+  for(int i = 0; i < 2; i++) {
+    ind = i * stride;
+    load(&av, &a[ind]);
+    load(&bv, &b[ind]);
+    load(&cv, &c[ind]);
+    load(&dv, &d[ind]);
+    
+#if FPPREC == 0
+    bv = SIMD_RCP_P(bv);
+#elif FPPREC == 1
+    bv = SIMD_DIV_P(ones, bv);
+#endif
+    
+    ddv = SIMD_MUL_P(dv, bv);
+    aav = SIMD_MUL_P(av, bv);
+    ccv = SIMD_MUL_P(cv, bv);
+    
+    store(&aa[ind], &aav);
+    store(&cc[ind], &ccv);
+    store(&dd[ind], &ddv);
+  }
+  
+  for(int i = 2; i < N; i++) {
+    ind = i * stride;
+    load(&av, &a[ind]);
+    load(&bv, &b[ind]);
+    load(&cv, &c[ind]);
+    load(&dv, &d[ind]);
+    
+    // bbi   = static_cast<REAL>(1.0) / (b[ind] - a[ind] * cc[ind - stride]); 
+    tmp = SIMD_MUL_P(av, ccv);
+    bv = SIMD_SUB_P(bv, tmp);
+#if FPPREC == 0
+    bv = SIMD_RCP_P(bv);
+#elif FPPREC == 1
+    bv = SIMD_DIV_P(ones, bv);
+#endif
+    
+    // dd[ind] = (d[ind] - a[ind]*dd[ind - stride]) * bbi;
+    ddv = SIMD_MUL_P(av, ddv);
+    ddv = SIMD_SUB_P(dv, ddv);
+    ddv = SIMD_MUL_P(ddv, bv);
+    
+    // aa[ind] = (     - a[ind]*aa[ind - stride]) * bbi;
+    aav = SIMD_MUL_P(av, aav);
+    aav = SIMD_MUL_P(aav, minusOnes);
+    aav = SIMD_MUL_P(aav, bv);
+    
+    // cc[ind] =                 c[ind]  * bbi;
+    ccv = SIMD_MUL_P(cv, bv);
+    
+    store(&aa[ind], &aav);
+    store(&cc[ind], &ccv);
+    store(&dd[ind], &ddv);
+  }
+  
+  ind = (N - 2) * stride;
+  
+  SIMD_REG aavNew, ccvNew, ddvNew;
+  
+  load(&aav, &aa[ind]);
+  load(&ccv, &cc[ind]);
+  load(&ddv, &dd[ind]);
+  
+  for(int i = N - 3; i > 0; i--) {
+    ind = i * stride;
+    
+    load(&aavNew, &aa[ind]);
+    load(&ccvNew, &cc[ind]);
+    load(&ddvNew, &dd[ind]);
+    
+    // dd[ind] = dd[ind] - cc[ind]*dd[ind + stride];
+    ddv = SIMD_MUL_P(ccvNew, ddv);
+    ddv = SIMD_SUB_P(ddvNew, ddv);
+    
+    // aa[ind] = aa[ind] - cc[ind]*aa[ind + stride];
+    aav = SIMD_MUL_P(ccvNew, aav);
+    aav = SIMD_SUB_P(aavNew, aav);
+    
+    // cc[ind] =       - cc[ind]*cc[ind + stride];
+    ccv = SIMD_MUL_P(ccvNew, ccv);
+    ccv = SIMD_MUL_P(ccv, minusOnes);
+    
+    store(&aa[ind], &aav);
+    store(&cc[ind], &ccv);
+    store(&dd[ind], &ddv);
+  }
+  
+  load(&aavNew, &aa[0]);
+  load(&ccvNew, &cc[0]);
+  load(&ddvNew, &dd[0]);
+  
+  // bbi = static_cast<REAL>(1.0) / (static_cast<REAL>(1.0) - cc[0]*aa[stride]);
+  bv = SIMD_MUL_P(ccvNew, aav);
+  bv = SIMD_SUB_P(ones, bv);
+#if FPPREC == 0
+  bv = SIMD_RCP_P(bv);
+#elif FPPREC == 1
+  bv = SIMD_DIV_P(ones, bv);
+#endif
+  
+  // dd[0] =  bbi * ( dd[0] - cc[0]*dd[stride] );
+  ddv = SIMD_MUL_P(ccvNew, ddv);
+  ddv = SIMD_SUB_P(ddvNew, ddv);
+  ddv = SIMD_MUL_P(bv, ddv);
+  
+  // bbi *   aa[0];
+  aav = SIMD_MUL_P(bv, aavNew);
+  
+  // cc[0] =  bbi * (       - cc[0]*cc[stride] );
+  ccv = SIMD_MUL_P(ccvNew, ccv);
+  ccv = SIMD_MUL_P(minusOnes, ccv);
+  ccv = SIMD_MUL_P(bv, ccv);
+  
+  store(&aa[0], &aav);
+  store(&cc[0], &ccv);
+  store(&dd[0], &ddv);
 }
 
 //

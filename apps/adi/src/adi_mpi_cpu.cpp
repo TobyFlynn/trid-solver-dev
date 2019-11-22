@@ -679,13 +679,24 @@ int main(int argc, char* argv[]) {
 
     // Do the modified Thomas
     timing_start(app.prof, &timer2);
-    #pragma omp parallel for
-    for(int id=0; id<app.n_sys_gz; id++) {
-      int base = (id/app.nx) * app.nx_pad + (id % app.nx);
-      thomas_forward(&app.az[base],&app.bz[base],&app.cz[base],&app.du[base],&app.h_u[base],
-                     &app.aa[base],&app.cc[base],&app.dd[base],app.nz,app.nx_pad * app.ny);
+    for(int y = 0; y < app.ny; y++) {
+      for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
+        int base = y * app.nx_pad + x;
+        thomas_forward_vec(&app.az[base],&app.bz[base],&app.cz[base],&app.du[base],
+                           &app.h_u[base],&app.aa[base],&app.cc[base],&app.dd[base],
+                           app.nz,app.nx_pad * app.ny);
+      }
     }
     
+    if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
+      for(int y = 0; y < app.ny; y++) {
+        for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
+          int base = y * app.nx_pad + x;
+          thomas_forward(&app.az[base],&app.bz[base],&app.cz[base],&app.du[base],&app.h_u[base],
+                     &app.aa[base],&app.cc[base],&app.dd[base],app.nz,app.nx_pad * app.ny);
+        }
+      }
+    }
     timing_end(app.prof, &timer2, &app.elapsed_time_z[0], app.elapsed_name[0]);
 
     // Communicate boundary values
