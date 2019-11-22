@@ -379,11 +379,11 @@ int main(int argc, char* argv[]) {
 //  char   elapsed_name[TIMERS][256] = {"forward","halo1","alltoall1","halo2","reduced","halo3","alltoall2","halo4","backward","pre_mpi","pre_comp"};
   strcpy(app.elapsed_name[ 0], "forward");
   strcpy(app.elapsed_name[ 1], "halo1");
-  strcpy(app.elapsed_name[ 2], "alltoall1");
+  strcpy(app.elapsed_name[ 2], "gather");
   strcpy(app.elapsed_name[ 3], "halo2");
   strcpy(app.elapsed_name[ 4], "reduced");
   strcpy(app.elapsed_name[ 5], "halo3");
-  strcpy(app.elapsed_name[ 6], "alltoall2");
+  strcpy(app.elapsed_name[ 6], "scatter");
   strcpy(app.elapsed_name[ 7], "halo4");
   strcpy(app.elapsed_name[ 8], "backward");
   strcpy(app.elapsed_name[ 9], "pre_mpi");
@@ -399,7 +399,9 @@ int main(int argc, char* argv[]) {
   double elapsed_halo4     = 0.0;
 
   for(int i=0; i<TIMERS; i++) {
-    app.elapsed_time[i] = 0.0;
+    app.elapsed_time_x[i] = 0.0;
+    app.elapsed_time_y[i] = 0.0;
+    app.elapsed_time_z[i] = 0.0;
     app.timers_min[i]   = DBL_MAX;
     app.timers_avg[i]   = 0.0;
     app.timers_max[i]   = 0.0;
@@ -442,7 +444,7 @@ int main(int argc, char* argv[]) {
                      &app.aa[base],&app.cc[base],&app.dd[base],app.nx, 1);
     }
     
-    timing_end(app.prof, &timer2, &app.elapsed_time[0], app.elapsed_name[0]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_x[0], app.elapsed_name[0]);
 
     // Communicate boundary values
     // Pack boundary to a single data structure
@@ -457,14 +459,14 @@ int main(int argc, char* argv[]) {
       mpi.halo_sndbuf_x[id*3*2 + 2*2     ] = app.dd[id*app.nx_pad           ];
       mpi.halo_sndbuf_x[id*3*2 + 2*2 + 1 ] = app.dd[id*app.nx_pad + app.nx-1];
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[1], app.elapsed_name[1]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_x[1], app.elapsed_name[1]);
 
     timing_start(app.prof, &timer2);
     
     MPI_Gather(mpi.halo_sndbuf_x, app.n_sys_lx*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_x, app.n_sys_lx*3*2, MPI_DOUBLE, 0, mpi.x_comm);
     //MPI_Alltoall(mpi.halo_sndbuf_x, app.n_sys_lx*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_x,
     //  app.n_sys_lx*3*2, MPI_DOUBLE, mpi.x_comm/*MPI_COMM_WORLD*/); //************************* Is the rcreation of mpi.x_comm above and its use correct ??
-    timing_end(app.prof, &timer2, &app.elapsed_time[2], app.elapsed_name[2]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_x[2], app.elapsed_name[2]);
 
     // Unpack boundary data
     timing_start(app.prof, &timer2);
@@ -482,7 +484,7 @@ int main(int argc, char* argv[]) {
         }
       }
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[3], app.elapsed_name[3]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_x[3], app.elapsed_name[3]);
 
     timing_start(app.prof, &timer2);
     if(mpi.coords[0] == 0) {
@@ -493,7 +495,7 @@ int main(int argc, char* argv[]) {
         thomas_on_reduced(&app.aa_rx[base], &app.cc_rx[base], &app.dd_rx[base], app.sys_len_lx, 1);
       }
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[4], app.elapsed_name[4]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_x[4], app.elapsed_name[4]);
 
     // Pack boundary solution data
     timing_start(app.prof, &timer2);
@@ -506,7 +508,7 @@ int main(int argc, char* argv[]) {
         }
       }
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[5], app.elapsed_name[5]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_x[5], app.elapsed_name[5]);
 
     // Send back new values
     timing_start(app.prof, &timer2);
@@ -514,7 +516,7 @@ int main(int argc, char* argv[]) {
     MPI_Scatter(mpi.halo_rcvbuf_x, app.n_sys_lx*2, MPI_DOUBLE, mpi.halo_sndbuf_x, app.n_sys_lx*2, MPI_DOUBLE, 0, mpi.x_comm);
     
     //MPI_Alltoall(mpi.halo_rcvbuf_x, app.n_sys_lx*2, MPI_DOUBLE, mpi.halo_sndbuf_x, app.n_sys_lx*2, MPI_DOUBLE, mpi.x_comm/*MPI_COMM_WORLD*/);
-    timing_end(app.prof, &timer2, &app.elapsed_time[6], app.elapsed_name[6]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_x[6], app.elapsed_name[6]);
 
     // Unpack boundary solution
     timing_start(app.prof, &timer2);
@@ -524,7 +526,7 @@ int main(int argc, char* argv[]) {
       app.dd[id*app.nx_pad           ] = mpi.halo_sndbuf_x[id*2    ];
       app.dd[id*app.nx_pad + app.nx-1] = mpi.halo_sndbuf_x[id*2 + 1];
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[7], app.elapsed_name[7]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_x[7], app.elapsed_name[7]);
 
 
     // Do the backward pass of modified Thomas
@@ -539,7 +541,7 @@ int main(int argc, char* argv[]) {
         thomas_backward(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.du[ind],app.nx,1);
       }
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[8], app.elapsed_name[8]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_x[8], app.elapsed_name[8]);
 
     MPI_Barrier(mpi.x_comm/*MPI_COMM_WORLD*/);
     timing_end(app.prof, &timer, &elapsed_trid_x, "trid-x");
@@ -562,7 +564,7 @@ int main(int argc, char* argv[]) {
       thomas_forward(&app.ay[base],&app.by[base],&app.cy[base],&app.du[base],&app.h_u[base],
                      &app.aa[base],&app.cc[base],&app.dd[base],app.ny,app.nx_pad);
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[0], app.elapsed_name[0]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_y[0], app.elapsed_name[0]);
 
     // Communicate boundary values
     // Pack boundary to a single data structure
@@ -579,13 +581,13 @@ int main(int argc, char* argv[]) {
       mpi.halo_sndbuf_y[id*3*2 + 2*2     ] = app.dd[start];
       mpi.halo_sndbuf_y[id*3*2 + 2*2 + 1 ] = app.dd[end];
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[1], app.elapsed_name[1]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_y[1], app.elapsed_name[1]);
 
     timing_start(app.prof, &timer2);
     MPI_Gather(mpi.halo_sndbuf_y, app.n_sys_ly*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_y, app.n_sys_ly*3*2, MPI_DOUBLE, 0, mpi.y_comm);
     //MPI_Alltoall(mpi.halo_sndbuf_y, app.n_sys_ly*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_y,
     //  app.n_sys_ly*3*2, MPI_DOUBLE, mpi.y_comm/*MPI_COMM_WORLD*/); //************************* Is the rcreation of mpi.x_comm above and its use correct ??
-    timing_end(app.prof, &timer2, &app.elapsed_time[2], app.elapsed_name[2]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_y[2], app.elapsed_name[2]);
 
     // Unpack boundary data
     timing_start(app.prof, &timer2);
@@ -603,7 +605,7 @@ int main(int argc, char* argv[]) {
         }
       }
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[3], app.elapsed_name[3]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_y[3], app.elapsed_name[3]);
 
     timing_start(app.prof, &timer2);
     // Compute reduced system
@@ -614,7 +616,7 @@ int main(int argc, char* argv[]) {
         thomas_on_reduced(&app.aa_ry[base], &app.cc_ry[base], &app.dd_ry[base], app.sys_len_ly, 1);
       }
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[4], app.elapsed_name[4]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_y[4], app.elapsed_name[4]);
 
 
 
@@ -629,13 +631,13 @@ int main(int argc, char* argv[]) {
         }
       }
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[5], app.elapsed_name[5]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_y[5], app.elapsed_name[5]);
 
     // Send back new values
     timing_start(app.prof, &timer2);
     MPI_Scatter(mpi.halo_rcvbuf_y, app.n_sys_ly*2, MPI_DOUBLE, mpi.halo_sndbuf_y, app.n_sys_ly*2, MPI_DOUBLE, 0, mpi.y_comm);
     //MPI_Alltoall(mpi.halo_rcvbuf_y, app.n_sys_ly*2, MPI_DOUBLE, mpi.halo_sndbuf_y, app.n_sys_ly*2, MPI_DOUBLE, mpi.y_comm/*MPI_COMM_WORLD*/);
-    timing_end(app.prof, &timer2, &app.elapsed_time[6], app.elapsed_name[6]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_y[6], app.elapsed_name[6]);
 
     // Unpack boundary solution
     timing_start(app.prof, &timer2);
@@ -646,7 +648,7 @@ int main(int argc, char* argv[]) {
       app.dd[start] = mpi.halo_sndbuf_y[id*2];
       app.dd[end] = mpi.halo_sndbuf_y[id*2 + 1];
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[7], app.elapsed_name[7]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_y[7], app.elapsed_name[7]);
 
 
     // Do the backward pass of modified Thomas
@@ -661,7 +663,7 @@ int main(int argc, char* argv[]) {
         thomas_backward(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.du[ind],app.ny,app.nx_pad);
       }
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[8], app.elapsed_name[8]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_y[8], app.elapsed_name[8]);
 
     MPI_Barrier(mpi.y_comm/*MPI_COMM_WORLD*/);
     timing_end(app.prof, &timer, &elapsed_trid_y, "trid-y");
@@ -684,7 +686,7 @@ int main(int argc, char* argv[]) {
                      &app.aa[base],&app.cc[base],&app.dd[base],app.nz,app.nx_pad * app.ny);
     }
     
-    timing_end(app.prof, &timer2, &app.elapsed_time[0], app.elapsed_name[0]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_z[0], app.elapsed_name[0]);
 
     // Communicate boundary values
     // Pack boundary to a single data structure
@@ -701,13 +703,13 @@ int main(int argc, char* argv[]) {
       mpi.halo_sndbuf_z[id*3*2 + 2*2     ] = app.dd[start];
       mpi.halo_sndbuf_z[id*3*2 + 2*2 + 1 ] = app.dd[end];
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[1], app.elapsed_name[1]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_z[1], app.elapsed_name[1]);
     
     timing_start(app.prof, &timer2);
     MPI_Gather(mpi.halo_sndbuf_z, app.n_sys_lz*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_z, app.n_sys_lz*3*2, MPI_DOUBLE, 0, mpi.z_comm);
     //MPI_Alltoall(mpi.halo_sndbuf_z, app.n_sys_lz*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_z,
     //  app.n_sys_lz*3*2, MPI_DOUBLE, mpi.z_comm/*MPI_COMM_WORLD*/); //************************* Is the rcreation of mpi.x_comm above and its use correct ??
-    timing_end(app.prof, &timer2, &app.elapsed_time[2], app.elapsed_name[2]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_z[2], app.elapsed_name[2]);
 
     // Unpack boundary data
     timing_start(app.prof, &timer2);
@@ -725,7 +727,7 @@ int main(int argc, char* argv[]) {
         }
       }
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[3], app.elapsed_name[3]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_z[3], app.elapsed_name[3]);
 
     timing_start(app.prof, &timer2);
     // Compute reduced system
@@ -736,7 +738,7 @@ int main(int argc, char* argv[]) {
         thomas_on_reduced(&app.aa_rz[base], &app.cc_rz[base], &app.dd_rz[base], app.sys_len_lz, 1);
       }
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[4], app.elapsed_name[4]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_z[4], app.elapsed_name[4]);
 
 
 
@@ -751,13 +753,13 @@ int main(int argc, char* argv[]) {
         }
       }
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[5], app.elapsed_name[5]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_z[5], app.elapsed_name[5]);
 
     // Send back new values
     timing_start(app.prof, &timer2);
     MPI_Scatter(mpi.halo_rcvbuf_z, app.n_sys_lz*2, MPI_DOUBLE, mpi.halo_sndbuf_z, app.n_sys_lz*2, MPI_DOUBLE, 0, mpi.z_comm);
     //MPI_Alltoall(mpi.halo_rcvbuf_z, app.n_sys_lz*2, MPI_DOUBLE, mpi.halo_sndbuf_z, app.n_sys_lz*2, MPI_DOUBLE, mpi.z_comm/*MPI_COMM_WORLD*/);
-    timing_end(app.prof, &timer2, &app.elapsed_time[6], app.elapsed_name[6]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_z[6], app.elapsed_name[6]);
 
     // Unpack boundary solution
     timing_start(app.prof, &timer2);
@@ -768,7 +770,7 @@ int main(int argc, char* argv[]) {
       app.dd[start] = mpi.halo_sndbuf_z[id*2];
       app.dd[end] = mpi.halo_sndbuf_z[id*2 + 1];
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[7], app.elapsed_name[7]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_z[7], app.elapsed_name[7]);
 
     // Do the backward pass of modified Thomas
     timing_start(app.prof, &timer2);
@@ -782,7 +784,7 @@ int main(int argc, char* argv[]) {
         thomas_backward(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.du[ind],app.nz,app.nx_pad * app.ny);
       }
     }
-    timing_end(app.prof, &timer2, &app.elapsed_time[8], app.elapsed_name[8]);
+    timing_end(app.prof, &timer2, &app.elapsed_time_z[8], app.elapsed_name[8]);
 
     MPI_Barrier(mpi.z_comm/*MPI_COMM_WORLD*/);
     timing_end(app.prof, &timer, &elapsed_trid_z, "trid-z");
@@ -793,8 +795,8 @@ int main(int argc, char* argv[]) {
   
   timing_end(app.prof, &timer1, &elapsed_total, "total");
   
-  //rms("post z h_u", app.h_u, app, mpi);
-  //rms("post z du", app.du, app, mpi);
+  rms("end h_u", app.h_u, app, mpi);
+  rms("end du", app.du, app, mpi);
 
 /*{
   int nx = app.nx;
@@ -811,36 +813,20 @@ int main(int argc, char* argv[]) {
     }
   }
 }*/
-
-  if(mpi.rank==0) {
-  printf("Time in trid-x segments[ms]: \n[total] \t%s \t%s \t%s \t%s \t%s \t%s \t%s \t%s \t[checksum]\n", elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4], elapsed_name[5], elapsed_name[6], elapsed_name[7]);
-  }
-  printf("RANK %d %lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
-      mpi.rank,
-      1000.0*elapsed_trid_x ,
-      1000.0*elapsed_time[0],
-      1000.0*elapsed_time[1],
-      1000.0*elapsed_time[2],
-      1000.0*elapsed_time[3],
-      1000.0*elapsed_time[4],
-      1000.0*elapsed_time[5],
-      1000.0*elapsed_time[6],
-      1000.0*elapsed_time[7],
-      1000.0*elapsed_time[8],
-      1000.0*(elapsed_time[0] + elapsed_time[1] + elapsed_time[2] + elapsed_time[3] + elapsed_time[4] + elapsed_time[5] + elapsed_time[6] + elapsed_time[7] + elapsed_time[8]));
-
   // Normalize timers to one iteration
-  for(int i=0; i<TIMERS; i++)
-    app.elapsed_time[i] /= app.iter;
+  for(int i=0; i<TIMERS; i++) {
+    app.elapsed_time_x[i] /= app.iter;
+    app.elapsed_time_y[i] /= app.iter;
+    app.elapsed_time_z[i] /= app.iter;
+  }
 
   MPI_Barrier(MPI_COMM_WORLD);
-  MPI_Reduce(app.elapsed_time,app.timers_min,TIMERS,MPI_DOUBLE,MPI_MIN,0,MPI_COMM_WORLD);
+  /*MPI_Reduce(app.elapsed_time,app.timers_min,TIMERS,MPI_DOUBLE,MPI_MIN,0,MPI_COMM_WORLD);
   MPI_Reduce(app.elapsed_time,app.timers_max,TIMERS,MPI_DOUBLE,MPI_MAX,0,MPI_COMM_WORLD);
   MPI_Reduce(app.elapsed_time,app.timers_avg,TIMERS,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
   for(int i=0; i<TIMERS; i++)
-    app.timers_avg[i] /= mpi.procs;
+    app.timers_avg[i] /= mpi.procs;*/
 
-  sleep(1);
   for(int i=0; i<mpi.procs; i++) {
     MPI_Barrier(MPI_COMM_WORLD);
     //sleep(0.2);
@@ -851,45 +837,81 @@ int main(int argc, char* argv[]) {
       }
       printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
       1000.0*elapsed_trid_x ,
-      1000.0*app.elapsed_time[0],
-      1000.0*app.elapsed_time[1],
-      1000.0*app.elapsed_time[2],
-      1000.0*app.elapsed_time[3],
-      1000.0*app.elapsed_time[4],
-      1000.0*app.elapsed_time[5],
-      1000.0*app.elapsed_time[6],
-      1000.0*app.elapsed_time[7],
-      1000.0*app.elapsed_time[8],
-      1000.0*(app.elapsed_time[0] + app.elapsed_time[1] + app.elapsed_time[2] + app.elapsed_time[3] + app.elapsed_time[4] + app.elapsed_time[5] + app.elapsed_time[6] + app.elapsed_time[7] + app.elapsed_time[8]));
+      1000.0*app.elapsed_time_x[0],
+      1000.0*app.elapsed_time_x[1],
+      1000.0*app.elapsed_time_x[2],
+      1000.0*app.elapsed_time_x[3],
+      1000.0*app.elapsed_time_x[4],
+      1000.0*app.elapsed_time_x[5],
+      1000.0*app.elapsed_time_x[6],
+      1000.0*app.elapsed_time_x[7],
+      1000.0*app.elapsed_time_x[8],
+      1000.0*(app.elapsed_time_x[0] + app.elapsed_time_x[1] + app.elapsed_time_x[2] + app.elapsed_time_x[3] + app.elapsed_time_x[4] + app.elapsed_time_x[5] + app.elapsed_time_x[6] + app.elapsed_time_x[7] + app.elapsed_time_x[8]));
     }
   }
-
-  if(mpi.rank==0) {
-    double *timers = (double*) malloc(TIMERS*mpi.procs*sizeof(double));
-    MPI_Gather(elapsed_time, TIMERS, MPI_DOUBLE, timers, TIMERS, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    for(int i=1; i<TIMERS; i++) {
-      timers_min[i]  = MIN(timers_min[i-1],timers[i]);
-      timers_max[i]  = MAX(timers_max[i-1],timers[i]);
-      timers_avg[i] += timers[i];
+  
+  for(int i=0; i<mpi.procs; i++) {
+    MPI_Barrier(MPI_COMM_WORLD);
+    //sleep(0.2);
+    if(i==mpi.rank) {
+      if(mpi.rank==0) {
+        printf("Time in trid-y segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[checksum]\n",
+            app.elapsed_name[0], app.elapsed_name[1], app.elapsed_name[2], app.elapsed_name[3], app.elapsed_name[4], app.elapsed_name[5], app.elapsed_name[6], app.elapsed_name[7], app.elapsed_name[8]);
+      }
+      printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
+      1000.0*elapsed_trid_y ,
+      1000.0*app.elapsed_time_y[0],
+      1000.0*app.elapsed_time_y[1],
+      1000.0*app.elapsed_time_y[2],
+      1000.0*app.elapsed_time_y[3],
+      1000.0*app.elapsed_time_y[4],
+      1000.0*app.elapsed_time_y[5],
+      1000.0*app.elapsed_time_y[6],
+      1000.0*app.elapsed_time_y[7],
+      1000.0*app.elapsed_time_y[8],
+      1000.0*(app.elapsed_time_y[0] + app.elapsed_time_y[1] + app.elapsed_time_y[2] + app.elapsed_time_y[3] + app.elapsed_time_y[4] + app.elapsed_time_y[5] + app.elapsed_time_y[6] + app.elapsed_time_y[7] + app.elapsed_time_y[8]));
     }
-    timers_avg
-    printf("TimerID MIN \t\tAVG \t\tMAX \t\tSection \n");
-    for(int i=0; i<TIMERS; i++)
-      printf("%d \t%lf \t%lf \t%lf \t%s \n",i,app.timers_min[i],app.timers_avg[i],app.timers_max[i],app.elapsed_name[i]);
-    printf("Done.\n");
+  }
+  
+  for(int i=0; i<mpi.procs; i++) {
+    MPI_Barrier(MPI_COMM_WORLD);
+    //sleep(0.2);
+    if(i==mpi.rank) {
+      if(mpi.rank==0) {
+        printf("Time in trid-z segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[checksum]\n",
+            app.elapsed_name[0], app.elapsed_name[1], app.elapsed_name[2], app.elapsed_name[3], app.elapsed_name[4], app.elapsed_name[5], app.elapsed_name[6], app.elapsed_name[7], app.elapsed_name[8]);
+      }
+      printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
+      1000.0*elapsed_trid_z ,
+      1000.0*app.elapsed_time_z[0],
+      1000.0*app.elapsed_time_z[1],
+      1000.0*app.elapsed_time_z[2],
+      1000.0*app.elapsed_time_z[3],
+      1000.0*app.elapsed_time_z[4],
+      1000.0*app.elapsed_time_z[5],
+      1000.0*app.elapsed_time_z[6],
+      1000.0*app.elapsed_time_z[7],
+      1000.0*app.elapsed_time_z[8],
+      1000.0*(app.elapsed_time_z[0] + app.elapsed_time_z[1] + app.elapsed_time_z[2] + app.elapsed_time_z[3] + app.elapsed_time_z[4] + app.elapsed_time_z[5] + app.elapsed_time_z[6] + app.elapsed_time_z[7] + app.elapsed_time_z[8]));
+    }
+  }
+  
+  MPI_Barrier(MPI_COMM_WORLD);
+  if(mpi.rank == 0) {
     // Print execution times
     if(app.prof == 0) {
       printf("Avg(per iter) \n[total]\n");
       printf("%f\n", elapsed_total/app.iter);
     }
     else if(app.prof == 1) {
-    printf("Time per element averaged on %d iterations: \n[total] \t[prepro] \t[trid_x] \t[trid_y] \t[trid_z]\n", app.iter);
+    printf("Time per section: \n[total] \t[prepro] \t[trid_x] \t[trid_y] \t[trid_z]\n");
     printf("%e \t%e \t%e \t%e \t%e\n",
         (elapsed_total/app.iter  ),
         (elapsed_preproc/app.iter),
         (elapsed_trid_x/app.iter ),
         (elapsed_trid_y/app.iter ),
         (elapsed_trid_z/app.iter ));
+    printf("Time per element averaged on %d iterations: \n[total] \t[prepro] \t[trid_x] \t[trid_y] \t[trid_z]\n", app.iter);
     printf("%e \t%e \t%e \t%e \t%e\n",
         (elapsed_total/app.iter  ) / (app.nx_g * app.ny_g * app.nz_g),
         (elapsed_preproc/app.iter) / (app.nx_g * app.ny_g * app.nz_g),
