@@ -379,11 +379,11 @@ int main(int argc, char* argv[]) {
 //  char   elapsed_name[TIMERS][256] = {"forward","halo1","alltoall1","halo2","reduced","halo3","alltoall2","halo4","backward","pre_mpi","pre_comp"};
   strcpy(app.elapsed_name[ 0], "forward");
   strcpy(app.elapsed_name[ 1], "halo1");
-  strcpy(app.elapsed_name[ 2], "gather");
+  strcpy(app.elapsed_name[ 2], "alltoall1");
   strcpy(app.elapsed_name[ 3], "halo2");
   strcpy(app.elapsed_name[ 4], "reduced");
   strcpy(app.elapsed_name[ 5], "halo3");
-  strcpy(app.elapsed_name[ 6], "scatter");
+  strcpy(app.elapsed_name[ 6], "alltoall2");
   strcpy(app.elapsed_name[ 7], "halo4");
   strcpy(app.elapsed_name[ 8], "backward");
   strcpy(app.elapsed_name[ 9], "pre_mpi");
@@ -463,49 +463,43 @@ int main(int argc, char* argv[]) {
 
     timing_start(app.prof, &timer2);
     
-    MPI_Gather(mpi.halo_sndbuf_x, app.n_sys_lx*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_x, app.n_sys_lx*3*2, MPI_DOUBLE, 0, mpi.x_comm);
-    //MPI_Alltoall(mpi.halo_sndbuf_x, app.n_sys_lx*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_x,
-    //  app.n_sys_lx*3*2, MPI_DOUBLE, mpi.x_comm/*MPI_COMM_WORLD*/); //************************* Is the rcreation of mpi.x_comm above and its use correct ??
+    //MPI_Gather(mpi.halo_sndbuf_x, app.n_sys_lx*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_x, app.n_sys_lx*3*2, MPI_DOUBLE, 0, mpi.x_comm);
+    MPI_Alltoall(mpi.halo_sndbuf_x, app.n_sys_lx*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_x,
+      app.n_sys_lx*3*2, MPI_DOUBLE, mpi.x_comm/*MPI_COMM_WORLD*/); //************************* Is the rcreation of mpi.x_comm above and its use correct ??
     timing_end(app.prof, &timer2, &app.elapsed_time_x[2], app.elapsed_name[2]);
 
     // Unpack boundary data
     timing_start(app.prof, &timer2);
-    if(mpi.coords[0] == 0) {
-      #pragma omp parallel for collapse(2)
-      for(int p=0; p<mpi.pdims[0]/*mpi.procs*/; p++) {
-        for(int id=0; id<app.n_sys_lx; id++) {
-          //printf("p = %d is = %d \n",p,id);
-          app.aa_rx[id*app.sys_len_lx + p*2    ] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 0*2     ];
-          app.aa_rx[id*app.sys_len_lx + p*2 + 1] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 0*2 + 1 ];
-          app.cc_rx[id*app.sys_len_lx + p*2    ] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 1*2     ];
-          app.cc_rx[id*app.sys_len_lx + p*2 + 1] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 1*2 + 1 ];
-          app.dd_rx[id*app.sys_len_lx + p*2    ] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 2*2     ];
-          app.dd_rx[id*app.sys_len_lx + p*2 + 1] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 2*2 + 1 ];
-        }
+    #pragma omp parallel for collapse(2)
+    for(int p=0; p<mpi.pdims[0]/*mpi.procs*/; p++) {
+      for(int id=0; id<app.n_sys_lx; id++) {
+        //printf("p = %d is = %d \n",p,id);
+        app.aa_rx[id*app.sys_len_lx + p*2    ] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 0*2     ];
+        app.aa_rx[id*app.sys_len_lx + p*2 + 1] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 0*2 + 1 ];
+        app.cc_rx[id*app.sys_len_lx + p*2    ] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 1*2     ];
+        app.cc_rx[id*app.sys_len_lx + p*2 + 1] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 1*2 + 1 ];
+        app.dd_rx[id*app.sys_len_lx + p*2    ] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 2*2     ];
+        app.dd_rx[id*app.sys_len_lx + p*2 + 1] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 2*2 + 1 ];
       }
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_x[3], app.elapsed_name[3]);
 
     timing_start(app.prof, &timer2);
-    if(mpi.coords[0] == 0) {
-      // Compute reduced system
-      #pragma omp parallel for
-      for(int id=0; id<app.n_sys_lx; id++) {
-        int base = id*app.sys_len_lx;
-        thomas_on_reduced(&app.aa_rx[base], &app.cc_rx[base], &app.dd_rx[base], app.sys_len_lx, 1);
-      }
+    // Compute reduced system
+    #pragma omp parallel for
+    for(int id=0; id<app.n_sys_lx; id++) {
+      int base = id*app.sys_len_lx;
+      thomas_on_reduced(&app.aa_rx[base], &app.cc_rx[base], &app.dd_rx[base], app.sys_len_lx, 1);
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_x[4], app.elapsed_name[4]);
 
     // Pack boundary solution data
     timing_start(app.prof, &timer2);
-    if(mpi.coords[0] == 0) {
-      #pragma omp parallel for
-      for(int p=0; p<mpi.pdims[0]/*mpi.procs*/; p++) {
-        for(int id=0; id<app.n_sys_lx; id++) {
-          mpi.halo_rcvbuf_x[p*app.n_sys_lx*2 + id*2    ] = app.dd_rx[id*app.sys_len_lx + p*2    ];
-          mpi.halo_rcvbuf_x[p*app.n_sys_lx*2 + id*2 + 1] = app.dd_rx[id*app.sys_len_lx + p*2 + 1];
-        }
+    #pragma omp parallel for
+    for(int p=0; p<mpi.pdims[0]/*mpi.procs*/; p++) {
+      for(int id=0; id<app.n_sys_lx; id++) {
+        mpi.halo_rcvbuf_x[p*app.n_sys_lx*2 + id*2    ] = app.dd_rx[id*app.sys_len_lx + p*2    ];
+        mpi.halo_rcvbuf_x[p*app.n_sys_lx*2 + id*2 + 1] = app.dd_rx[id*app.sys_len_lx + p*2 + 1];
       }
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_x[5], app.elapsed_name[5]);
@@ -513,9 +507,9 @@ int main(int argc, char* argv[]) {
     // Send back new values
     timing_start(app.prof, &timer2);
     
-    MPI_Scatter(mpi.halo_rcvbuf_x, app.n_sys_lx*2, MPI_DOUBLE, mpi.halo_sndbuf_x, app.n_sys_lx*2, MPI_DOUBLE, 0, mpi.x_comm);
+    //MPI_Scatter(mpi.halo_rcvbuf_x, app.n_sys_lx*2, MPI_DOUBLE, mpi.halo_sndbuf_x, app.n_sys_lx*2, MPI_DOUBLE, 0, mpi.x_comm);
     
-    //MPI_Alltoall(mpi.halo_rcvbuf_x, app.n_sys_lx*2, MPI_DOUBLE, mpi.halo_sndbuf_x, app.n_sys_lx*2, MPI_DOUBLE, mpi.x_comm/*MPI_COMM_WORLD*/);
+    MPI_Alltoall(mpi.halo_rcvbuf_x, app.n_sys_lx*2, MPI_DOUBLE, mpi.halo_sndbuf_x, app.n_sys_lx*2, MPI_DOUBLE, mpi.x_comm/*MPI_COMM_WORLD*/);
     timing_end(app.prof, &timer2, &app.elapsed_time_x[6], app.elapsed_name[6]);
 
     // Unpack boundary solution
@@ -584,37 +578,33 @@ int main(int argc, char* argv[]) {
     timing_end(app.prof, &timer2, &app.elapsed_time_y[1], app.elapsed_name[1]);
 
     timing_start(app.prof, &timer2);
-    MPI_Gather(mpi.halo_sndbuf_y, app.n_sys_ly*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_y, app.n_sys_ly*3*2, MPI_DOUBLE, 0, mpi.y_comm);
-    //MPI_Alltoall(mpi.halo_sndbuf_y, app.n_sys_ly*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_y,
-    //  app.n_sys_ly*3*2, MPI_DOUBLE, mpi.y_comm/*MPI_COMM_WORLD*/); //************************* Is the rcreation of mpi.x_comm above and its use correct ??
+    //MPI_Gather(mpi.halo_sndbuf_y, app.n_sys_ly*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_y, app.n_sys_ly*3*2, MPI_DOUBLE, 0, mpi.y_comm);
+    MPI_Alltoall(mpi.halo_sndbuf_y, app.n_sys_ly*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_y,
+      app.n_sys_ly*3*2, MPI_DOUBLE, mpi.y_comm/*MPI_COMM_WORLD*/); //************************* Is the rcreation of mpi.x_comm above and its use correct ??
     timing_end(app.prof, &timer2, &app.elapsed_time_y[2], app.elapsed_name[2]);
 
     // Unpack boundary data
     timing_start(app.prof, &timer2);
-    if(mpi.coords[1] == 0) {
-      #pragma omp parallel for collapse(2)
-      for(int p=0; p<mpi.pdims[1]/*mpi.procs*/; p++) {
-        for(int id=0; id<app.n_sys_ly; id++) {
-          //printf("p = %d is = %d \n",p,id);
-          app.aa_ry[id*app.sys_len_ly + p*2    ] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 0*2     ];
-          app.aa_ry[id*app.sys_len_ly + p*2 + 1] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 0*2 + 1 ];
-          app.cc_ry[id*app.sys_len_ly + p*2    ] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 1*2     ];
-          app.cc_ry[id*app.sys_len_ly + p*2 + 1] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 1*2 + 1 ];
-          app.dd_ry[id*app.sys_len_ly + p*2    ] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 2*2     ];
-          app.dd_ry[id*app.sys_len_ly + p*2 + 1] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 2*2 + 1 ];
-        }
+    #pragma omp parallel for collapse(2)
+    for(int p=0; p<mpi.pdims[1]/*mpi.procs*/; p++) {
+      for(int id=0; id<app.n_sys_ly; id++) {
+        //printf("p = %d is = %d \n",p,id);
+        app.aa_ry[id*app.sys_len_ly + p*2    ] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 0*2     ];
+        app.aa_ry[id*app.sys_len_ly + p*2 + 1] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 0*2 + 1 ];
+        app.cc_ry[id*app.sys_len_ly + p*2    ] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 1*2     ];
+        app.cc_ry[id*app.sys_len_ly + p*2 + 1] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 1*2 + 1 ];
+        app.dd_ry[id*app.sys_len_ly + p*2    ] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 2*2     ];
+        app.dd_ry[id*app.sys_len_ly + p*2 + 1] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 2*2 + 1 ];
       }
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_y[3], app.elapsed_name[3]);
 
     timing_start(app.prof, &timer2);
     // Compute reduced system
-    if(mpi.coords[1] == 0) {
-      #pragma omp parallel for
-      for(int id=0; id<app.n_sys_ly; id++) {
-        int base = id*app.sys_len_ly;
-        thomas_on_reduced(&app.aa_ry[base], &app.cc_ry[base], &app.dd_ry[base], app.sys_len_ly, 1);
-      }
+    #pragma omp parallel for
+    for(int id=0; id<app.n_sys_ly; id++) {
+      int base = id*app.sys_len_ly;
+      thomas_on_reduced(&app.aa_ry[base], &app.cc_ry[base], &app.dd_ry[base], app.sys_len_ly, 1);
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_y[4], app.elapsed_name[4]);
 
@@ -622,21 +612,19 @@ int main(int argc, char* argv[]) {
 
     // Pack boundary solution data
     timing_start(app.prof, &timer2);
-    if(mpi.coords[1] == 0) {
-      #pragma omp parallel for
-      for(int p=0; p<mpi.pdims[1]/*mpi.procs*/; p++) {
-        for(int id=0; id<app.n_sys_ly; id++) {
-          mpi.halo_rcvbuf_y[p*app.n_sys_ly*2 + id*2    ] = app.dd_ry[id*app.sys_len_ly + p*2    ];
-          mpi.halo_rcvbuf_y[p*app.n_sys_ly*2 + id*2 + 1] = app.dd_ry[id*app.sys_len_ly + p*2 + 1];
-        }
+    #pragma omp parallel for
+    for(int p=0; p<mpi.pdims[1]/*mpi.procs*/; p++) {
+      for(int id=0; id<app.n_sys_ly; id++) {
+        mpi.halo_rcvbuf_y[p*app.n_sys_ly*2 + id*2    ] = app.dd_ry[id*app.sys_len_ly + p*2    ];
+        mpi.halo_rcvbuf_y[p*app.n_sys_ly*2 + id*2 + 1] = app.dd_ry[id*app.sys_len_ly + p*2 + 1];
       }
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_y[5], app.elapsed_name[5]);
 
     // Send back new values
     timing_start(app.prof, &timer2);
-    MPI_Scatter(mpi.halo_rcvbuf_y, app.n_sys_ly*2, MPI_DOUBLE, mpi.halo_sndbuf_y, app.n_sys_ly*2, MPI_DOUBLE, 0, mpi.y_comm);
-    //MPI_Alltoall(mpi.halo_rcvbuf_y, app.n_sys_ly*2, MPI_DOUBLE, mpi.halo_sndbuf_y, app.n_sys_ly*2, MPI_DOUBLE, mpi.y_comm/*MPI_COMM_WORLD*/);
+    //MPI_Scatter(mpi.halo_rcvbuf_y, app.n_sys_ly*2, MPI_DOUBLE, mpi.halo_sndbuf_y, app.n_sys_ly*2, MPI_DOUBLE, 0, mpi.y_comm);
+    MPI_Alltoall(mpi.halo_rcvbuf_y, app.n_sys_ly*2, MPI_DOUBLE, mpi.halo_sndbuf_y, app.n_sys_ly*2, MPI_DOUBLE, mpi.y_comm/*MPI_COMM_WORLD*/);
     timing_end(app.prof, &timer2, &app.elapsed_time_y[6], app.elapsed_name[6]);
 
     // Unpack boundary solution
@@ -706,37 +694,33 @@ int main(int argc, char* argv[]) {
     timing_end(app.prof, &timer2, &app.elapsed_time_z[1], app.elapsed_name[1]);
     
     timing_start(app.prof, &timer2);
-    MPI_Gather(mpi.halo_sndbuf_z, app.n_sys_lz*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_z, app.n_sys_lz*3*2, MPI_DOUBLE, 0, mpi.z_comm);
-    //MPI_Alltoall(mpi.halo_sndbuf_z, app.n_sys_lz*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_z,
-    //  app.n_sys_lz*3*2, MPI_DOUBLE, mpi.z_comm/*MPI_COMM_WORLD*/); //************************* Is the rcreation of mpi.x_comm above and its use correct ??
+    //MPI_Gather(mpi.halo_sndbuf_z, app.n_sys_lz*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_z, app.n_sys_lz*3*2, MPI_DOUBLE, 0, mpi.z_comm);
+    MPI_Alltoall(mpi.halo_sndbuf_z, app.n_sys_lz*3*2, MPI_DOUBLE, mpi.halo_rcvbuf_z,
+      app.n_sys_lz*3*2, MPI_DOUBLE, mpi.z_comm/*MPI_COMM_WORLD*/); //************************* Is the rcreation of mpi.x_comm above and its use correct ??
     timing_end(app.prof, &timer2, &app.elapsed_time_z[2], app.elapsed_name[2]);
 
     // Unpack boundary data
     timing_start(app.prof, &timer2);
-    if(mpi.coords[2] == 0) {
-      #pragma omp parallel for collapse(2)
-      for(int p=0; p<mpi.pdims[2]/*mpi.procs*/; p++) {
-        for(int id=0; id<app.n_sys_lz; id++) {
-          //printf("p = %d is = %d \n",p,id);
-          app.aa_rz[id*app.sys_len_lz + p*2    ] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 0*2     ];
-          app.aa_rz[id*app.sys_len_lz + p*2 + 1] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 0*2 + 1 ];
-          app.cc_rz[id*app.sys_len_lz + p*2    ] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 1*2     ];
-          app.cc_rz[id*app.sys_len_lz + p*2 + 1] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 1*2 + 1 ];
-          app.dd_rz[id*app.sys_len_lz + p*2    ] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 2*2     ];
-          app.dd_rz[id*app.sys_len_lz + p*2 + 1] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 2*2 + 1 ];
-        }
+    #pragma omp parallel for collapse(2)
+    for(int p=0; p<mpi.pdims[2]/*mpi.procs*/; p++) {
+      for(int id=0; id<app.n_sys_lz; id++) {
+        //printf("p = %d is = %d \n",p,id);
+        app.aa_rz[id*app.sys_len_lz + p*2    ] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 0*2     ];
+        app.aa_rz[id*app.sys_len_lz + p*2 + 1] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 0*2 + 1 ];
+        app.cc_rz[id*app.sys_len_lz + p*2    ] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 1*2     ];
+        app.cc_rz[id*app.sys_len_lz + p*2 + 1] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 1*2 + 1 ];
+        app.dd_rz[id*app.sys_len_lz + p*2    ] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 2*2     ];
+        app.dd_rz[id*app.sys_len_lz + p*2 + 1] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 2*2 + 1 ];
       }
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_z[3], app.elapsed_name[3]);
 
     timing_start(app.prof, &timer2);
     // Compute reduced system
-    if(mpi.coords[2] == 0) {
-      #pragma omp parallel for
-      for(int id=0; id<app.n_sys_lz; id++) {
-        int base = id*app.sys_len_lz;
-        thomas_on_reduced(&app.aa_rz[base], &app.cc_rz[base], &app.dd_rz[base], app.sys_len_lz, 1);
-      }
+    #pragma omp parallel for
+    for(int id=0; id<app.n_sys_lz; id++) {
+      int base = id*app.sys_len_lz;
+      thomas_on_reduced(&app.aa_rz[base], &app.cc_rz[base], &app.dd_rz[base], app.sys_len_lz, 1);
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_z[4], app.elapsed_name[4]);
 
@@ -744,21 +728,19 @@ int main(int argc, char* argv[]) {
 
     // Pack boundary solution data
     timing_start(app.prof, &timer2);
-    if(mpi.coords[2] == 0) {
-      #pragma omp parallel for
-      for(int p=0; p<mpi.pdims[2]/*mpi.procs*/; p++) {
-        for(int id=0; id<app.n_sys_lz; id++) {
-          mpi.halo_rcvbuf_z[p*app.n_sys_lz*2 + id*2    ] = app.dd_rz[id*app.sys_len_lz + p*2    ];
-          mpi.halo_rcvbuf_z[p*app.n_sys_lz*2 + id*2 + 1] = app.dd_rz[id*app.sys_len_lz + p*2 + 1];
-        }
+    #pragma omp parallel for
+    for(int p=0; p<mpi.pdims[2]/*mpi.procs*/; p++) {
+      for(int id=0; id<app.n_sys_lz; id++) {
+        mpi.halo_rcvbuf_z[p*app.n_sys_lz*2 + id*2    ] = app.dd_rz[id*app.sys_len_lz + p*2    ];
+        mpi.halo_rcvbuf_z[p*app.n_sys_lz*2 + id*2 + 1] = app.dd_rz[id*app.sys_len_lz + p*2 + 1];
       }
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_z[5], app.elapsed_name[5]);
 
     // Send back new values
     timing_start(app.prof, &timer2);
-    MPI_Scatter(mpi.halo_rcvbuf_z, app.n_sys_lz*2, MPI_DOUBLE, mpi.halo_sndbuf_z, app.n_sys_lz*2, MPI_DOUBLE, 0, mpi.z_comm);
-    //MPI_Alltoall(mpi.halo_rcvbuf_z, app.n_sys_lz*2, MPI_DOUBLE, mpi.halo_sndbuf_z, app.n_sys_lz*2, MPI_DOUBLE, mpi.z_comm/*MPI_COMM_WORLD*/);
+    //MPI_Scatter(mpi.halo_rcvbuf_z, app.n_sys_lz*2, MPI_DOUBLE, mpi.halo_sndbuf_z, app.n_sys_lz*2, MPI_DOUBLE, 0, mpi.z_comm);
+    MPI_Alltoall(mpi.halo_rcvbuf_z, app.n_sys_lz*2, MPI_DOUBLE, mpi.halo_sndbuf_z, app.n_sys_lz*2, MPI_DOUBLE, mpi.z_comm/*MPI_COMM_WORLD*/);
     timing_end(app.prof, &timer2, &app.elapsed_time_z[6], app.elapsed_name[6]);
 
     // Unpack boundary solution
