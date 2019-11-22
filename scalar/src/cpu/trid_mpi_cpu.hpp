@@ -351,6 +351,42 @@ inline void thomas_forward_vec(
 // Modified Thomas backward pass
 //
 template<typename REAL>
+inline void thomas_backward_vec(
+    const REAL *__restrict__ aa, 
+    const REAL *__restrict__ cc, 
+    const REAL *__restrict__ dd, 
+          REAL *__restrict__ d, 
+    int N, 
+    int stride) {
+
+  int ind = 0;
+  
+  SIMD_REG aav, ccv, ddv, ddv_s, ddv_e, tmp1, tmp2;
+  
+  load(&ddv_s, &dd[0]);
+  load(&ddv_e, &dd[(N - 1) * stride]);
+  
+  // d[0] = dd[0];
+  store(&d[0], &ddv_s);
+  
+  for (int i=1; i<N-1; i++) {
+    ind = i * stride;
+    load(&aav, &aa[ind]);
+    load(&ccv, &cc[ind]);
+    load(&ddv, &dd[ind]);
+    // d[ind] = dd[ind] - aa[ind]*dd[0] - cc[ind]*dd[(N-1) * stride];
+    tmp1 = SIMD_MUL_P(aav, ddv_s);
+    tmp2 = SIMD_MUL_P(ccv, ddv_e);
+    ddv = SIMD_SUB_P(ddv, tmp1);
+    ddv = SIMD_SUB_P(ddv, tmp2);
+    
+    store(&d[ind], &ddv);
+  }
+  //d[(N-1) * stride] = dd[(N-1) * stride];
+  store(&d[(N-1) * stride], &ddv_e);
+}
+
+template<typename REAL>
 inline void thomas_backward(
     const REAL *__restrict__ aa, 
     const REAL *__restrict__ cc, 
@@ -369,6 +405,54 @@ inline void thomas_backward(
     d[ind] = dd[ind] - aa[ind]*dd[0] - cc[ind]*dd[(N-1) * stride];
   }
   d[(N-1) * stride] = dd[(N-1) * stride];
+}
+
+template<typename REAL>
+inline void thomas_backwardInc_vec(
+    const REAL *__restrict__ aa, 
+    const REAL *__restrict__ cc, 
+    const REAL *__restrict__ dd, 
+          REAL *__restrict__ u, 
+    int N, 
+    int stride) {
+
+  int ind = 0;
+  
+  SIMD_REG aav, ccv, uv, ddv, ddv_s, ddv_e, tmp1, tmp2;
+  
+  load(&ddv_s, &dd[0]);
+  load(&ddv_e, &dd[(N - 1) * stride]);
+  
+  load(&uv, &u[0]);
+  
+  // u[0] += dd[0];
+  uv = SIMD_ADD_P(uv, ddv_s);
+  
+  store(&u[0], &uv);
+  
+  for (int i=1; i<N-1; i++) {
+    ind = i * stride;
+    load(&aav, &aa[ind]);
+    load(&ccv, &cc[ind]);
+    load(&ddv, &dd[ind]);
+    load(&uv, &u[ind]);
+    
+    // u[ind] += dd[ind] - aa[ind]*dd[0] - cc[ind]*dd[(N-1) * stride];
+    tmp1 = SIMD_MUL_P(aav, ddv_s);
+    tmp2 = SIMD_MUL_P(ccv, ddv_e);
+    ddv = SIMD_SUB_P(ddv, tmp1);
+    ddv = SIMD_SUB_P(ddv, tmp2);
+    uv = SIMD_ADD_P(uv, ddv);
+    
+    store(&u[ind], &uv);
+  }
+  
+  // u[(N-1) * stride] += dd[(N-1) * stride];
+  load(&uv, &u[(N-1) * stride]);
+  
+  uv = SIMD_ADD_P(uv, ddv_e);
+  
+  store(&u[(N-1) * stride], &uv);
 }
 
 template<typename REAL>
