@@ -29,10 +29,10 @@ project("adi")
 
 if (INTEL_CC) 
   # Set compiler flags/options for Intel compiler
-  set(FLAGS_INTEL_DEFAULT "-xCORE_AVX2 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par -qopt-report-phase=offload")
+  set(FLAGS_INTEL_DEFAULT "-xCORE_AVX2 -parallel -qopenmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout -O3")
   #set(FLAGS_INTEL_DEFAULT "-xAVX -m64 -parallel -openmp -no-offload -qopt-report=2 -qopt-report-phase=vec -qopt-report=2 -qopt-report-phase=par") #-xCORE_AVX2 
-  set(FLAGS_INTEL_DEBUG   "-g -O0")
-  set(FLAGS_INTEL_RELEASE "-g -std=c99 -O0 -ip -restrict") #-fp-model fast 
+  set(FLAGS_INTEL_DEBUG   "-qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout -g -O3")
+  set(FLAGS_INTEL_RELEASE "-qopt-report=2 -qopt-report-phase=vec -qopt-report-file=stdout -g -std=c99 -O0 -ip -restrict -O3") #-fp-model fast 
 
   set(CMAKE_CXX_FLAGS         "${CMAKE_CXX_FLAGS}       ${FLAGS_INTEL_DEFAULT}")
   set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS_INTEL_DEBUG}  ")
