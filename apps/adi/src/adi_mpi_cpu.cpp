@@ -558,11 +558,23 @@ int main(int argc, char* argv[]) {
 
     // Do the modified Thomas
     timing_start(app.prof, &timer2);
-    #pragma omp parallel for
-    for(int id=0; id<app.n_sys_gy; id++) {
-      int base = (id/app.nx) * app.nx_pad * app.ny + (id % app.nx);
-      thomas_forward(&app.ay[base],&app.by[base],&app.cy[base],&app.du[base],&app.h_u[base],
+    for(int z = 0; z < app.nz; z++) {
+      for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
+        int base = z * app.nx_pad * app.ny + x;
+        thomas_forward_vec(&app.ay[base],&app.by[base],&app.cy[base],&app.du[base],
+                           &app.h_u[base],&app.aa[base],&app.cc[base],&app.dd[base],
+                           app.ny,app.nx_pad);
+      }
+    }
+    
+    if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
+      for(int z = 0; z < app.nz; z++) {
+        for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
+          int base = z * app.nx_pad * app.ny + x;
+          thomas_forward(&app.ay[base],&app.by[base],&app.cy[base],&app.du[base],&app.h_u[base],
                      &app.aa[base],&app.cc[base],&app.dd[base],app.ny,app.nx_pad);
+        }
+      }
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_y[0], app.elapsed_name[0]);
 
@@ -653,14 +665,27 @@ int main(int argc, char* argv[]) {
 
     // Do the backward pass of modified Thomas
     timing_start(app.prof, &timer2);
-    #pragma omp parallel for
-    for(int id=0; id<app.n_sys_gy; id++) {
-      int ind = (id/app.nx) * app.nx_pad * app.ny + (id % app.nx);
-      //thomas_backward(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.h_u[ind],app.ny,app.nx_pad);
-      if(INC) {
-        thomas_backwardInc(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.h_u[ind],app.ny,app.nx_pad);
-      } else {
-        thomas_backward(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.du[ind],app.ny,app.nx_pad);
+    for(int z = 0; z < app.nz; z++) {
+      for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
+        int base = z * app.nx_pad * app.ny + x;
+        if(INC) {
+          thomas_backwardInc_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.ny,app.nx_pad);
+        } else {
+          thomas_backward_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.du[base],app.ny,app.nx_pad);
+        }
+      }
+    }
+    
+    if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
+      for(int z = 0; z < app.nz; z++) {
+        for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
+          int base = z * app.nx_pad * app.ny + x;
+          if(INC) {
+            thomas_backwardInc(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.ny,app.nx_pad);
+          } else {
+            thomas_backward(&app.aa[base],&app.cc[base],&app.dd[base],&app.du[base],app.ny,app.nx_pad);
+          }
+        }
       }
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_y[8], app.elapsed_name[8]);
@@ -678,23 +703,11 @@ int main(int argc, char* argv[]) {
     timing_start(app.prof, &timer);
     // Do the modified Thomas
     timing_start(app.prof, &timer2);
-    for(int y = 0; y < app.ny; y++) {
-      for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
-        int base = y * app.nx_pad + x;
-        thomas_forward_vec(&app.az[base],&app.bz[base],&app.cz[base],&app.du[base],
-                           &app.h_u[base],&app.aa[base],&app.cc[base],&app.dd[base],
-                           app.nz,app.nx_pad * app.ny);
-      }
-    }
-    
-    if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
-      for(int y = 0; y < app.ny; y++) {
-        for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
-          int base = y * app.nx_pad + x;
-          thomas_forward(&app.az[base],&app.bz[base],&app.cz[base],&app.du[base],&app.h_u[base],
+    #pragma omp parallel for
+    for(int id=0; id<app.n_sys_gz; id++) {
+      int base = (id/app.nx) * app.nx_pad + (id % app.nx);
+      thomas_forward(&app.az[base],&app.bz[base],&app.cz[base],&app.du[base],&app.h_u[base],
                      &app.aa[base],&app.cc[base],&app.dd[base],app.nz,app.nx_pad * app.ny);
-        }
-      }
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_z[0], app.elapsed_name[0]);
 
@@ -784,27 +797,14 @@ int main(int argc, char* argv[]) {
 
     // Do the backward pass of modified Thomas
     timing_start(app.prof, &timer2);
-    for(int y = 0; y < app.ny; y++) {
-      for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
-        int base = y * app.nx_pad + x;
-        if(INC) {
-          thomas_backwardInc_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.nz,app.nx_pad * app.ny);
-        } else {
-          thomas_backward_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.du[base],app.nz,app.nx_pad * app.ny);
-        }
-      }
-    }
-    
-    if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
-      for(int y = 0; y < app.ny; y++) {
-        for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
-          int base = y * app.nx_pad + x;
-          if(INC) {
-            thomas_backwardInc(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.nz,app.nx_pad * app.ny);
-          } else {
-            thomas_backward(&app.aa[base],&app.cc[base],&app.dd[base],&app.du[base],app.nz,app.nx_pad * app.ny);
-          }
-        }
+    #pragma omp parallel for
+    for(int id=0; id<app.n_sys_gz; id++) {
+      int ind = (id/app.nx) * app.nx_pad + (id % app.nx);
+      //thomas_backward(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.h_u[ind],app.nz,app.nx_pad * app.ny);
+      if(INC) {
+        thomas_backwardInc(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.h_u[ind],app.nz,app.nx_pad * app.ny);
+      } else {
+        thomas_backward(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.du[ind],app.nz,app.nx_pad * app.ny);
       }
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_z[8], app.elapsed_name[8]);
