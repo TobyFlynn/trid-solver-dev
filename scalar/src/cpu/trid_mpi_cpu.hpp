@@ -256,10 +256,7 @@ inline void thomas_forward_transpose_vec(
     int sys_pad,
     int stride) {
   
-  SIMD_REG av;
   SIMD_REG bv;
-  SIMD_REG cv;
-  SIMD_REG dv;
   
   SIMD_REG tmp;
   
@@ -267,6 +264,10 @@ inline void thomas_forward_transpose_vec(
   SIMD_REG b_reg[SIMD_VEC];
   SIMD_REG c_reg[SIMD_VEC];
   SIMD_REG d_reg[SIMD_VEC];
+  
+  SIMD_REG aa_reg[N * SIMD_VEC];
+  SIMD_REG cc_reg[N * SIMD_VEC];
+  SIMD_REG dd_reg[N * SIMD_VEC];
   
   SIMD_REG ones = SIMD_SET1_P(1.0);
   SIMD_REG minusOnes = SIMD_SET1_P(-1.0);
@@ -289,14 +290,15 @@ inline void thomas_forward_transpose_vec(
     a_reg[i] = SIMD_MUL_P(bv, a_reg[i]);
     c_reg[i] = SIMD_MUL_P(bv, c_reg[i]);
     d_reg[i] = SIMD_MUL_P(bv, d_reg[i]);
-    av = a_reg[i];
-    cv = c_reg[i];
-    dv = d_reg[i];
+
+    aa_reg[n + i] = a_reg[i];
+    cc_reg[n + i] = c_reg[i];
+    dd_reg[n + i] = d_reg[i];
   }
   
   for(int i = 2; i < SIMD_VEC; i++) {
     // bbi   = static_cast<REAL>(1.0) / (b[ind] - a[ind] * cc[ind - stride]); 
-    tmp = SIMD_MUL_P(a_reg[i], cv);
+    tmp = SIMD_MUL_P(a_reg[i], cc_reg[n + i - 1]);
     bv = SIMD_SUB_P(b_reg[i], tmp);
 #if FPPREC == 0
     bv = SIMD_RCP_P(bv);
@@ -305,25 +307,21 @@ inline void thomas_forward_transpose_vec(
 #endif
     
     // dd[ind] = (d[ind] - a[ind]*dd[ind - stride]) * bbi;
-    tmp = SIMD_MUL_P(a_reg[i], dv);
+    tmp = SIMD_MUL_P(a_reg[i], dd_reg[n + i - 1]);
     d_reg[i] = SIMD_SUB_P(d_reg[i], tmp);
     d_reg[i] = SIMD_MUL_P(d_reg[i], bv);
-    dv = d_reg[i];
+    dd_reg[n + i] = d_reg[i];
     
     // aa[ind] = (     - a[ind]*aa[ind - stride]) * bbi;
-    a_reg[i] = SIMD_MUL_P(a_reg[i], av);
+    a_reg[i] = SIMD_MUL_P(a_reg[i], aa_reg[n + i - 1]);
     a_reg[i] = SIMD_MUL_P(a_reg[i], minusOnes);
     a_reg[i] = SIMD_MUL_P(a_reg[i], bv);
-    av = a_reg[i];
+    aa_reg[n + i] = a_reg[i];
     
     // cc[ind] =                 c[ind]  * bbi;
     c_reg[i] = SIMD_MUL_P(c_reg[i], bv);
-    cv = c_reg[i];
+    cc_reg[n + i] = c_reg[i];
   }
-  
-  STORE(aa, a_reg, n, sys_pad);
-  STORE(cc, c_reg, n, sys_pad);
-  STORE(dd, d_reg, n, sys_pad);
   
   for(n = SIMD_VEC; n < (N / SIMD_VEC) * SIMD_VEC; n += SIMD_VEC) {
     LOAD(a_reg, a, n, sys_pad);
@@ -333,7 +331,7 @@ inline void thomas_forward_transpose_vec(
     
     for(int i = 0; i < SIMD_VEC; i++) {
       // bbi   = static_cast<REAL>(1.0) / (b[ind] - a[ind] * cc[ind - stride]); 
-      tmp = SIMD_MUL_P(a_reg[i], cv);
+      tmp = SIMD_MUL_P(a_reg[i], cc_reg[n + i - 1]);
       bv = SIMD_SUB_P(b_reg[i], tmp);
 #if FPPREC == 0
       bv = SIMD_RCP_P(bv);
@@ -342,25 +340,21 @@ inline void thomas_forward_transpose_vec(
 #endif
       
       // dd[ind] = (d[ind] - a[ind]*dd[ind - stride]) * bbi;
-      tmp = SIMD_MUL_P(a_reg[i], dv);
+      tmp = SIMD_MUL_P(a_reg[i], dd_reg[n + i - 1]);
       d_reg[i] = SIMD_SUB_P(d_reg[i], tmp);
       d_reg[i] = SIMD_MUL_P(d_reg[i], bv);
-      dv = d_reg[i];
+      dd_reg[n + i] = d_reg[i];
       
       // aa[ind] = (     - a[ind]*aa[ind - stride]) * bbi;
-      a_reg[i] = SIMD_MUL_P(a_reg[i], av);
+      a_reg[i] = SIMD_MUL_P(a_reg[i], aa_reg[n + i - 1]);
       a_reg[i] = SIMD_MUL_P(a_reg[i], minusOnes);
       a_reg[i] = SIMD_MUL_P(a_reg[i], bv);
-      av = a_reg[i];
+      aa_reg[n + i] = a_reg[i];
       
       // cc[ind] =                 c[ind]  * bbi;
       c_reg[i] = SIMD_MUL_P(c_reg[i], bv);
-      cv = c_reg[i];
+      cc_reg[n + i] = c_reg[i];
     }
-    
-    STORE(aa, a_reg, n, sys_pad);
-    STORE(cc, c_reg, n, sys_pad);
-    STORE(dd, d_reg, n, sys_pad);
   }
   
   if(N != sys_pad) {
@@ -371,7 +365,7 @@ inline void thomas_forward_transpose_vec(
     LOAD(d_reg, d, n, sys_pad);
     for(int i = 0; (n + i) < N; i++) {
       // bbi   = static_cast<REAL>(1.0) / (b[ind] - a[ind] * cc[ind - stride]); 
-      tmp = SIMD_MUL_P(a_reg[i], cv);
+      tmp = SIMD_MUL_P(a_reg[i], cc_reg[n + i - 1]);
       bv = SIMD_SUB_P(b_reg[i], tmp);
 #if FPPREC == 0
       bv = SIMD_RCP_P(bv);
@@ -380,22 +374,27 @@ inline void thomas_forward_transpose_vec(
 #endif
       
       // dd[ind] = (d[ind] - a[ind]*dd[ind - stride]) * bbi;
-      tmp = SIMD_MUL_P(a_reg[i], dv);
+      tmp = SIMD_MUL_P(a_reg[i], dd_reg[n + i - 1]);
       d_reg[i] = SIMD_SUB_P(d_reg[i], tmp);
       d_reg[i] = SIMD_MUL_P(d_reg[i], bv);
-      dv = d_reg[i];
+      dd_reg[n + i] = d_reg[i];
       
       // aa[ind] = (     - a[ind]*aa[ind - stride]) * bbi;
-      a_reg[i] = SIMD_MUL_P(a_reg[i], av);
+      a_reg[i] = SIMD_MUL_P(a_reg[i], aa_reg[n + i - 1]);
       a_reg[i] = SIMD_MUL_P(a_reg[i], minusOnes);
       a_reg[i] = SIMD_MUL_P(a_reg[i], bv);
-      av = a_reg[i];
+      aa_reg[n + i] = a_reg[i];
       
       // cc[ind] =                 c[ind]  * bbi;
       c_reg[i] = SIMD_MUL_P(c_reg[i], bv);
-      cv = c_reg[i];
+      cc_reg[n + i] = c_reg[i];
     }
     
+    STORE(aa, a_reg, n, sys_pad);
+    STORE(cc, c_reg, n, sys_pad);
+    STORE(dd, d_reg, n, sys_pad);
+  } else {
+    n = ((N / SIMD_VEC) * SIMD_VEC) - SIMD_VEC;
     STORE(aa, a_reg, n, sys_pad);
     STORE(cc, c_reg, n, sys_pad);
     STORE(dd, d_reg, n, sys_pad);
@@ -407,35 +406,21 @@ inline void thomas_forward_transpose_vec(
   LOAD(c_reg, cc, n, sys_pad);
   LOAD(d_reg, dd, n, sys_pad);
   
-  if(N_3 == SIMD_VEC - 1) {
-    SIMD_REG a_tmp_reg[SIMD_VEC];
-    SIMD_REG c_tmp_reg[SIMD_VEC];
-    SIMD_REG d_tmp_reg[SIMD_VEC];
-    LOAD(a_tmp_reg, aa, n + SIMD_VEC, sys_pad);
-    LOAD(c_tmp_reg, cc, n + SIMD_VEC, sys_pad);
-    LOAD(d_tmp_reg, dd, n + SIMD_VEC, sys_pad);
-    av = a_tmp_reg[0];
-    cv = c_tmp_reg[0];
-    dv = d_tmp_reg[0];
-  } else {
-    av = a_reg[N_3 + 1];
-    cv = c_reg[N_3 + 1];
-    dv = d_reg[N_3 + 1];
-  }
-  
   for(int i = N_3; i >= 0; i--) {
     // dd[ind] = dd[ind] - cc[ind]*dd[ind + stride];
-    tmp = SIMD_MUL_P(c_reg[i], dv);
-    d_reg[i] = SIMD_SUB_P(d_reg[i], tmp);
-    dv = d_reg[i];
+    tmp = SIMD_MUL_P(cc_reg[n + i], dd_reg[n + i + 1]);
+    d_reg[i] = SIMD_SUB_P(dd_reg[n + i], tmp);
+    dd_reg[n + i] = d_reg[i];
+    
     // aa[ind] = aa[ind] - cc[ind]*aa[ind + stride];
-    tmp = SIMD_MUL_P(c_reg[i], av);
-    a_reg[i] = SIMD_SUB_P(a_reg[i], tmp);
-    av = a_reg[i];
+    tmp = SIMD_MUL_P(cc_reg[n + i], aa_reg[n + i + 1]);
+    a_reg[i] = SIMD_SUB_P(aa_reg[n + i], tmp);
+    aa_reg[n + i] = a_reg[i];
+    
     // cc[ind] =       - cc[ind]*cc[ind + stride];
-    tmp = SIMD_MUL_P(c_reg[i], cv);
+    tmp = SIMD_MUL_P(cc_reg[n + i], cc_reg[n + i + 1]);
     c_reg[i] = SIMD_MUL_P(minusOnes, tmp);
-    cv = c_reg[i];
+    cc_reg[n + i] = c_reg[i];
   }
   
   STORE(aa, a_reg, n, sys_pad);
@@ -443,50 +428,46 @@ inline void thomas_forward_transpose_vec(
   STORE(dd, d_reg, n, sys_pad);
   
   for(n -= SIMD_VEC; n > 0; n -= SIMD_VEC) {
-    LOAD(a_reg, aa, n, sys_pad);
-    LOAD(c_reg, cc, n, sys_pad);
-    LOAD(d_reg, dd, n, sys_pad);
     for(int i = SIMD_VEC - 1; i >= 0; i--) {
       // dd[ind] = dd[ind] - cc[ind]*dd[ind + stride];
-      tmp = SIMD_MUL_P(c_reg[i], dv);
-      d_reg[i] = SIMD_SUB_P(d_reg[i], tmp);
-      dv = d_reg[i];
+      tmp = SIMD_MUL_P(cc_reg[n + i], dd_reg[n + i + 1]);
+      d_reg[i] = SIMD_SUB_P(dd_reg[n + i], tmp);
+      dd_reg[n + i] = d_reg[i];
+      
       // aa[ind] = aa[ind] - cc[ind]*aa[ind + stride];
-      tmp = SIMD_MUL_P(c_reg[i], av);
-      a_reg[i] = SIMD_SUB_P(a_reg[i], tmp);
-      av = a_reg[i];
+      tmp = SIMD_MUL_P(cc_reg[n + i], aa_reg[n + i + 1]);
+      a_reg[i] = SIMD_SUB_P(aa_reg[n + i], tmp);
+      aa_reg[n + i] = a_reg[i];
+      
       // cc[ind] =       - cc[ind]*cc[ind + stride];
-      tmp = SIMD_MUL_P(c_reg[i], cv);
+      tmp = SIMD_MUL_P(cc_reg[n + i], cc_reg[n + i + 1]);
       c_reg[i] = SIMD_MUL_P(minusOnes, tmp);
-      cv = c_reg[i];
+      cc_reg[n + i] = c_reg[i];
     }
     STORE(aa, a_reg, n, sys_pad);
     STORE(cc, c_reg, n, sys_pad);
     STORE(dd, d_reg, n, sys_pad);
   }
   
-  LOAD(a_reg, aa, 0, sys_pad);
-  LOAD(b_reg, b, 0, sys_pad);
-  LOAD(c_reg, cc, 0, sys_pad);
-  LOAD(d_reg, dd, 0, sys_pad);
-  
   for(int i = SIMD_VEC - 1; i > 0; i--) {
     // dd[ind] = dd[ind] - cc[ind]*dd[ind + stride];
-    tmp = SIMD_MUL_P(c_reg[i], dv);
-    d_reg[i] = SIMD_SUB_P(d_reg[i], tmp);
-    dv = d_reg[i];
+    tmp = SIMD_MUL_P(cc_reg[i], dd_reg[i + 1]);
+    d_reg[i] = SIMD_SUB_P(dd_reg[i], tmp);
+    dd_reg[i] = d_reg[i];
+    
     // aa[ind] = aa[ind] - cc[ind]*aa[ind + stride];
-    tmp = SIMD_MUL_P(c_reg[i], av);
-    a_reg[i] = SIMD_SUB_P(a_reg[i], tmp);
-    av = a_reg[i];
+    tmp = SIMD_MUL_P(cc_reg[i], aa_reg[i + 1]);
+    a_reg[i] = SIMD_SUB_P(aa_reg[i], tmp);
+    aa_reg[i] = a_reg[i];
+    
     // cc[ind] =       - cc[ind]*cc[ind + stride];
-    tmp = SIMD_MUL_P(c_reg[i], cv);
+    tmp = SIMD_MUL_P(cc_reg[i], cc_reg[i + 1]);
     c_reg[i] = SIMD_MUL_P(minusOnes, tmp);
-    cv = c_reg[i];
+    cc_reg[i] = c_reg[i];
   }
   
   // bbi = static_cast<REAL>(1.0) / (static_cast<REAL>(1.0) - cc[0]*aa[stride]);
-  bv = SIMD_MUL_P(c_reg[0], av);
+  bv = SIMD_MUL_P(cc_reg[0], aa_reg[1]);
   bv = SIMD_SUB_P(ones, bv);
 #if FPPREC == 0
   bv = SIMD_RCP_P(bv);
@@ -494,13 +475,15 @@ inline void thomas_forward_transpose_vec(
   bv = SIMD_DIV_P(ones, bv);
 #endif
   // dd[0] =  bbi * ( dd[0] - cc[0]*dd[stride] );
-  tmp = SIMD_MUL_P(c_reg[0], dv);
-  tmp = SIMD_SUB_P(d_reg[0], tmp);
+  tmp = SIMD_MUL_P(cc_reg[0], dd_reg[1]);
+  tmp = SIMD_SUB_P(dd_reg[0], tmp);
   d_reg[0] = SIMD_MUL_P(tmp, bv);
+  
   // aa[0] =  bbi *   aa[0];
-  a_reg[0] = SIMD_MUL_P(a_reg[0], bv);
+  a_reg[0] = SIMD_MUL_P(aa_reg[0], bv);
+  
   // cc[0] =  bbi * (       - cc[0]*cc[stride] );
-  tmp = SIMD_MUL_P(c_reg[0], cv);
+  tmp = SIMD_MUL_P(cc_reg[0], cc_reg[1]);
   tmp = SIMD_MUL_P(minusOnes, tmp);
   c_reg[0] = SIMD_MUL_P(tmp, bv);
   
@@ -508,131 +491,6 @@ inline void thomas_forward_transpose_vec(
   STORE(cc, c_reg, n, sys_pad);
   STORE(dd, d_reg, n, sys_pad);
 }
-//
-// Modified Thomas forwards pass
-//
-/*template<typename REAL>
-inline void thomas_forward_vec(
-    const REAL *__restrict__ a, 
-    const REAL *__restrict__ b, 
-    const REAL *__restrict__ c, 
-    const REAL *__restrict__ d, 
-    const REAL *__restrict__ u, 
-          REAL *__restrict__ aa, 
-          REAL *__restrict__ cc, 
-          REAL *__restrict__ dd, 
-    int N, 
-    int stride) {
-
-  REAL bbi;
-  int ind = 0;
-  
-  VECTOR aav_, bbv, ccv_, ddv_;
-  
-  VECTOR *__restrict av = (VECTOR *)a;
-  VECTOR *__restrict bv = (VECTOR *)b;
-  VECTOR *__restrict cv = (VECTOR *)c;
-  VECTOR *__restrict dv = (VECTOR *)d;
-  VECTOR *__restrict uv = (VECTOR *)u;
-  
-  VECTOR *__restrict aav = (VECTOR *)aa;
-  VECTOR *__restrict ccv = (VECTOR *)cc;
-  VECTOR *__restrict ddv = (VECTOR *)dd;
-  
-  VECTOR ones(1.0);
-
-  if(N >=2) {
-    // Start lower off-diagonal elimination
-    for(int i=0; i<2; i++) {
-      ind += stride;
-      bbv = ones / bv[ind];
-      ddv[ind] = dv[ind] * bbv;
-      aav[ind] = av[ind] * bbv;
-      ccv[ind] = cv[ind] * bbv;
-      aav_ = aav[ind];
-      ccv_ = ccv[ind];
-      ddv_ = ddv[ind];
-    }
-    if(N >=3 ) {
-      // Eliminate lower off-diagonal
-      for(int i=2; i<N; i++) {
-        ind += stride;
-        bbv = bv[ind] - av[ind] * ccv_;
-        bbv = ones / bbv;
-        //dd[i] = 77;//(d[i] - a[i]*dd[i-1]) * bbi;
-        ddv_ = (dv[ind] - av[ind]*ddv_) * bbv;
-        aav_ = (     - av[ind]*aav_) * bbv;
-        ccv_ =                 cv[ind]  * bbv;
-        ddv[ind] = ddv_;
-        aav[ind] = aav_;
-        ccv[ind] = ccv_;
-      }
-      ind = (N-2) * stride;
-      // Eliminate upper off-diagonal
-      for(int i=N-3; i>0; i--) {
-        ind -= stride;
-        //dd[i] = 88;//dd[i] - cc[i]*dd[i+1];
-        ddv_ = ddv[ind] - ccv[ind]*ddv_;
-        aav_ = aav[ind] - ccv[ind]*aav_;
-        ccv_ =       - ccv[ind]*ccv_;
-        ddv[ind] = ddv_;
-        aav[ind] = aav_;
-        ccv[ind] = ccv_;
-        
-      }
-      bbv = ones / (ones - ccv[0]*aav_);
-      ddv[0] =  bbv* ( ddv[0] - ccv[0]*ddv_ );
-      aav[0] =  bbv *   aav[0];
-      ccv[0] =  bbv * (       - ccv[0]*ccv_ );
-    }
-  }
-  else {
-    exit(-1);
-  }
-  
-  /*
-  if(N >=2) {
-    // Start lower off-diagonal elimination
-    for(int i=0; i<2; i++) {
-      ind += stride;
-      bbv = ones / bv[ind];
-      ddv[ind] = dv[ind] * bbv;
-      aav[ind] = av[ind] * bbv;
-      ccv[ind] = cv[ind] * bbv;
-      aav_ = aav[ind];
-      ccv_ = ccv[ind];
-      ddv_ = ddv[ind];
-    }
-    if(N >=3 ) {
-      // Eliminate lower off-diagonal
-      for(int i=2; i<N; i++) {
-        ind += stride;
-        bbv = bv[ind] - av[ind] * ccv[ind - stride];
-        bbv = ones / bbv;
-        //dd[i] = 77;//(d[i] - a[i]*dd[i-1]) * bbi;
-        ddv[ind] = (dv[ind] - av[ind]*ddv[ind - stride]) * bbv;
-        aav[ind] = (     - av[ind]*aav[ind - stride]) * bbv;
-        ccv[ind] =                 cv[ind]  * bbv;
-      }
-      ind = (N-2) * stride;
-      // Eliminate upper off-diagonal
-      for(int i=N-3; i>0; i--) {
-        ind -= stride;
-        //dd[i] = 88;//dd[i] - cc[i]*dd[i+1];
-        ddv[ind] = ddv[ind] - ccv[ind]*ddv[ind + stride];
-        aav[ind] = aav[ind] - ccv[ind]*aav[ind + stride];
-        ccv[ind] =       - ccv[ind]*ccv[ind + stride];
-      }
-      bbv = ones / (ones - ccv[0]*aav[stride]);
-      ddv[0] =  bbv* ( ddv[0] - ccv[0]*ddv[stride] );
-      aav[0] =  bbv *   aav[0];
-      ccv[0] =  bbv * (       - ccv[0]*ccv[stride] );
-    }
-  }
-  else {
-    exit(-1);
-  }
-}*/
 
 //
 // Modified Thomas backward pass

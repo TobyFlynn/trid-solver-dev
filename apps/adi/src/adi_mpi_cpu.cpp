@@ -855,11 +855,11 @@ int main(int argc, char* argv[]) {
   }
 }*/
   // Normalize timers to one iteration
-  for(int i=0; i<TIMERS; i++) {
+  /*for(int i=0; i<TIMERS; i++) {
     app.elapsed_time_x[i] /= app.iter;
     app.elapsed_time_y[i] /= app.iter;
     app.elapsed_time_z[i] /= app.iter;
-  }
+  }*/
 
   MPI_Barrier(MPI_COMM_WORLD);
   /*MPI_Reduce(app.elapsed_time,app.timers_min,TIMERS,MPI_DOUBLE,MPI_MIN,0,MPI_COMM_WORLD);
@@ -1029,11 +1029,11 @@ int main(int argc, char* argv[]) {
     else if(app.prof == 1) {
     printf("Time per section: \n[total] \t[prepro] \t[trid_x] \t[trid_y] \t[trid_z]\n");
     printf("%e \t%e \t%e \t%e \t%e\n",
-        (elapsed_total/app.iter  ),
-        (elapsed_preproc/app.iter),
-        (elapsed_trid_x/app.iter ),
-        (elapsed_trid_y/app.iter ),
-        (elapsed_trid_z/app.iter ));
+        elapsed_total,
+        elapsed_preproc,
+        elapsed_trid_x,
+        elapsed_trid_y,
+        elapsed_trid_z);
     printf("Time per element averaged on %d iterations: \n[total] \t[prepro] \t[trid_x] \t[trid_y] \t[trid_z]\n", app.iter);
     printf("%e \t%e \t%e \t%e \t%e\n",
         (elapsed_total/app.iter  ) / (app.nx_g * app.ny_g * app.nz_g),
