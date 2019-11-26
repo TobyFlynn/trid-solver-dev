@@ -300,6 +300,14 @@ int main(int argc, char* argv[]) {
     printf("%f\n", elapsed_total/iter);
   }
   else if(prof == 1) {
+  printf("Time per section: \n[total] \t[prepro] \t[trid_x] \t[trid_y] \t[trid_z]\n");
+  printf("%e \t%e \t%e \t%e \t%e\n",
+      elapsed_total,
+      elapsed_preproc,
+      elapsed_trid_x,
+      elapsed_trid_y,
+      elapsed_trid_z);
+  
   printf("Time per element averaged on %d iterations: \n[total] \t[prepro] \t[trid_x] \t[trid_y] \t[trid_z]\n", iter);
   printf("%e \t%e \t%e \t%e \t%e\n",
       (elapsed_total/iter)/(nx*ny*nz),
