@@ -99,6 +99,8 @@
 #    define SIMD_MUL_P _mm256_mul_ps
 #    define SIMD_DIV_P _mm256_div_ps
 #    define SIMD_RCP_P _mm256_rcp_ps
+#    define SIMD_FMADD_P _mm256_fmadd_ps
+#    define SIMD_FNMADD_P _mm256_fnmadd_ps
 #  elif FPPREC == 1
 // AVX double
 #    define VECTOR F64vec4
@@ -110,6 +112,8 @@
 #    define SIMD_SUB_P _mm256_sub_pd
 #    define SIMD_MUL_P _mm256_mul_pd
 #    define SIMD_DIV_P _mm256_div_pd
+#    define SIMD_FMADD_P _mm256_fmadd_pd
+#    define SIMD_FNMADD_P _mm256_fnmadd_pd
 #  else
 #    error "Macro definition FPPREC unrecognized for AVX-based processor"
 #  endif

@@ -258,8 +258,9 @@ inline void thomas_forward_vec(
     load(&dv, &d[ind]);
     
     // bbi   = static_cast<REAL>(1.0) / (b[ind] - a[ind] * cc[ind - stride]); 
-    tmp = SIMD_MUL_P(av, ccv);
-    bv = SIMD_SUB_P(bv, tmp);
+    /*tmp = SIMD_MUL_P(av, ccv);
+    bv = SIMD_SUB_P(bv, tmp);*/
+    bv = SIMD_FNMADD_P(av, ccv, bv);;
 #if FPPREC == 0
     bv = SIMD_RCP_P(bv);
 #elif FPPREC == 1
@@ -267,8 +268,9 @@ inline void thomas_forward_vec(
 #endif
     
     // dd[ind] = (d[ind] - a[ind]*dd[ind - stride]) * bbi;
-    ddv = SIMD_MUL_P(av, ddv);
-    ddv = SIMD_SUB_P(dv, ddv);
+    //ddv = SIMD_MUL_P(av, ddv);
+    //ddv = SIMD_SUB_P(dv, ddv);
+    ddv = SIMD_FNMADD_P(av, ddv, dv);
     ddv = SIMD_MUL_P(ddv, bv);
     
     // aa[ind] = (     - a[ind]*aa[ind - stride]) * bbi;
@@ -300,12 +302,14 @@ inline void thomas_forward_vec(
     load(&ddvNew, &dd[ind]);
     
     // dd[ind] = dd[ind] - cc[ind]*dd[ind + stride];
-    ddv = SIMD_MUL_P(ccvNew, ddv);
-    ddv = SIMD_SUB_P(ddvNew, ddv);
+    //ddv = SIMD_MUL_P(ccvNew, ddv);
+    //ddv = SIMD_SUB_P(ddvNew, ddv);
+    ddv = SIMD_FNMADD_P(ccvNew, ddv, ddvNew);
     
     // aa[ind] = aa[ind] - cc[ind]*aa[ind + stride];
-    aav = SIMD_MUL_P(ccvNew, aav);
-    aav = SIMD_SUB_P(aavNew, aav);
+    //aav = SIMD_MUL_P(ccvNew, aav);
+    //aav = SIMD_SUB_P(aavNew, aav);
+    aav = SIMD_FNMADD_P(ccvNew, aav, aavNew);
     
     // cc[ind] =       - cc[ind]*cc[ind + stride];
     ccv = SIMD_MUL_P(ccvNew, ccv);
@@ -321,8 +325,9 @@ inline void thomas_forward_vec(
   load(&ddvNew, &dd[0]);
   
   // bbi = static_cast<REAL>(1.0) / (static_cast<REAL>(1.0) - cc[0]*aa[stride]);
-  bv = SIMD_MUL_P(ccvNew, aav);
-  bv = SIMD_SUB_P(ones, bv);
+  //bv = SIMD_MUL_P(ccvNew, aav);
+  //bv = SIMD_SUB_P(ones, bv);
+  bv = SIMD_FNMADD_P(ccvNew, aav, ones);
 #if FPPREC == 0
   bv = SIMD_RCP_P(bv);
 #elif FPPREC == 1
@@ -330,8 +335,9 @@ inline void thomas_forward_vec(
 #endif
   
   // dd[0] =  bbi * ( dd[0] - cc[0]*dd[stride] );
-  ddv = SIMD_MUL_P(ccvNew, ddv);
-  ddv = SIMD_SUB_P(ddvNew, ddv);
+  //ddv = SIMD_MUL_P(ccvNew, ddv);
+  //ddv = SIMD_SUB_P(ddvNew, ddv);
+  ddv = SIMD_FNMADD_P(ccvNew, ddv, ddvNew);
   ddv = SIMD_MUL_P(bv, ddv);
   
   // bbi *   aa[0];
@@ -375,10 +381,12 @@ inline void thomas_backward_vec(
     load(&ccv, &cc[ind]);
     load(&ddv, &dd[ind]);
     // d[ind] = dd[ind] - aa[ind]*dd[0] - cc[ind]*dd[(N-1) * stride];
-    tmp1 = SIMD_MUL_P(aav, ddv_s);
+    /*tmp1 = SIMD_MUL_P(aav, ddv_s);
     tmp2 = SIMD_MUL_P(ccv, ddv_e);
     ddv = SIMD_SUB_P(ddv, tmp1);
-    ddv = SIMD_SUB_P(ddv, tmp2);
+    ddv = SIMD_SUB_P(ddv, tmp2);*/
+    tmp1 = SIMD_FNMADD_P(aav, ddv_s, ddv);
+    ddv = SIMD_FNMADD_P(ccv, ddv_e, tmp1);
     
     store(&d[ind], &ddv);
   }
@@ -438,10 +446,12 @@ inline void thomas_backwardInc_vec(
     load(&uv, &u[ind]);
     
     // u[ind] += dd[ind] - aa[ind]*dd[0] - cc[ind]*dd[(N-1) * stride];
-    tmp1 = SIMD_MUL_P(aav, ddv_s);
+    /*tmp1 = SIMD_MUL_P(aav, ddv_s);
     tmp2 = SIMD_MUL_P(ccv, ddv_e);
     ddv = SIMD_SUB_P(ddv, tmp1);
-    ddv = SIMD_SUB_P(ddv, tmp2);
+    ddv = SIMD_SUB_P(ddv, tmp2);*/
+    tmp1 = SIMD_FNMADD_P(aav, ddv_s, ddv);
+    ddv = SIMD_FNMADD_P(ccv, ddv_e, tmp1);
     uv = SIMD_ADD_P(uv, ddv);
     
     store(&u[ind], &uv);
