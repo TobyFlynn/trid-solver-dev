@@ -318,7 +318,7 @@ int main(int argc, char* argv[]) {
   printf("\nComputing ADI on CPU(seq): %f (s) \n", elapsed_total);
 
   int ldim=nx; // Lead dimension
-  #include "print_array.c"
+  //#include "print_array.c"
 
   free(h_u);
   free(h_du);
