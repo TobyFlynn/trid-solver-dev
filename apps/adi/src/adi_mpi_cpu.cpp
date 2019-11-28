@@ -424,7 +424,7 @@ int main(int argc, char* argv[]) {
     MPI_Barrier(MPI_COMM_WORLD);
     timing_start(app.prof, &timer);
         preproc_mpi<FP>(app.lambda, app.h_u, app.du, app.ax, app.bx, app.cx, app.ay, app.by, app.cy, app.az, app.bz, app.cz, app, mpi);
-    MPI_Barrier(MPI_COMM_WORLD);
+    //MPI_Barrier(MPI_COMM_WORLD);
     
     timing_end(app.prof, &timer, &elapsed_preproc, "preproc");
 
@@ -543,7 +543,7 @@ int main(int argc, char* argv[]) {
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_x[8], app.elapsed_name[8]);
 
-    MPI_Barrier(mpi.x_comm/*MPI_COMM_WORLD*/);
+    //MPI_Barrier(mpi.x_comm/*MPI_COMM_WORLD*/);
     timing_end(app.prof, &timer, &elapsed_trid_x, "trid-x");
   
     //rms("post x h_u", app.h_u, app, mpi);
@@ -553,7 +553,7 @@ int main(int argc, char* argv[]) {
     // perform tri-diagonal solves in y-direction
     //
     
-    MPI_Barrier(MPI_COMM_WORLD);
+    //MPI_Barrier(MPI_COMM_WORLD);
     timing_start(app.prof, &timer);
 
     // Do the modified Thomas
@@ -690,7 +690,7 @@ int main(int argc, char* argv[]) {
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_y[8], app.elapsed_name[8]);
 
-    MPI_Barrier(mpi.y_comm/*MPI_COMM_WORLD*/);
+    //MPI_Barrier(mpi.y_comm/*MPI_COMM_WORLD*/);
     timing_end(app.prof, &timer, &elapsed_trid_y, "trid-y");
     
     //rms("post y h_u", app.h_u, app, mpi);
@@ -699,7 +699,7 @@ int main(int argc, char* argv[]) {
     //
     // perform tri-diagonal solves in z-direction
     //
-    MPI_Barrier(MPI_COMM_WORLD);
+    //MPI_Barrier(MPI_COMM_WORLD);
     timing_start(app.prof, &timer);
     // Do the modified Thomas
     timing_start(app.prof, &timer2);
@@ -834,7 +834,7 @@ int main(int argc, char* argv[]) {
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_z[8], app.elapsed_name[8]);
 
-    MPI_Barrier(mpi.z_comm/*MPI_COMM_WORLD*/);
+    //MPI_Barrier(mpi.z_comm/*MPI_COMM_WORLD*/);
     timing_end(app.prof, &timer, &elapsed_trid_z, "trid-z");
     
     //rms("post z h_u", app.h_u, app, mpi);
