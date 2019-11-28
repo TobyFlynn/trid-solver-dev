@@ -593,13 +593,10 @@ int main(int argc, char* argv[]) {
     timing_start(app.prof, &timer2);
     #pragma omp parallel for
     for(int z = 0; z < app.nz; z++) {
-      int z_base = z * app.nx_pad * app.ny;
-      for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
-        int base = z_base + x;
-        thomas_forward_vec(&app.ay[base],&app.by[base],&app.cy[base],&app.du[base],
+      int base = z * app.nx_pad * app.ny;
+      thomas_forward_vec_strip(&app.ay[base],&app.by[base],&app.cy[base],&app.du[base],
                            &app.h_u[base],&app.aa[base],&app.cc[base],&app.dd[base],
-                           app.ny,app.nx_pad);
-      }
+                           app.ny,app.nx_pad, ROUND_DOWN(app.nx, SIMD_VEC));
     }
     
     if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
@@ -766,13 +763,10 @@ int main(int argc, char* argv[]) {
     timing_start(app.prof, &timer2);
      #pragma omp parallel for
     for(int y = 0; y < app.ny; y++) {
-      int y_base = y * app.nx_pad;
-      for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
-        int base = y_base + x;
-        thomas_forward_vec(&app.az[base],&app.bz[base],&app.cz[base],&app.du[base],
+      int base = y * app.nx_pad;
+      thomas_forward_vec_strip(&app.az[base],&app.bz[base],&app.cz[base],&app.du[base],
                            &app.h_u[base],&app.aa[base],&app.cc[base],&app.dd[base],
-                           app.nz,app.nx_pad * app.ny);
-      }
+                           app.nz,app.nx_pad * app.ny, ROUND_DOWN(app.nx, SIMD_VEC));
     }
     
     if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {

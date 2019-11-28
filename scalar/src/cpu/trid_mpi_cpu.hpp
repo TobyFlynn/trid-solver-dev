@@ -348,6 +348,327 @@ inline void thomas_forward_vec(
 }
 
 //
+// Modified Thomas forwards pass
+//
+template<typename REAL>
+inline void thomas_forward_vec_strip(
+    const REAL *__restrict__ a, 
+    const REAL *__restrict__ b, 
+    const REAL *__restrict__ c, 
+    const REAL *__restrict__ d, 
+    const REAL *__restrict__ u, 
+          REAL *__restrict__ aa, 
+          REAL *__restrict__ cc, 
+          REAL *__restrict__ dd, 
+    const int N, 
+    const int stride,
+    const int strip_len) {
+
+  int ind = 0;
+  
+  SIMD_REG av, bv, cv, dv, uv, aav, ccv, ddv, tmp;
+  
+  SIMD_REG ones = SIMD_SET1_P(1.0);
+  SIMD_REG minusOnes = SIMD_SET1_P(-1.0);
+  
+  int n = 0;
+  
+  for(int i = 0; i < 2; i++) {
+    int base = i * stride;
+    for(int j = 0; j < strip_len; j += SIMD_VEC) {
+      ind = base + j;
+      load(&av, &a[ind]);
+      load(&bv, &b[ind]);
+      load(&cv, &c[ind]);
+      load(&dv, &d[ind]);
+      
+#if FPPREC == 0
+      bv = SIMD_RCP_P(bv);
+#elif FPPREC == 1
+      bv = SIMD_DIV_P(ones, bv);
+#endif
+      
+      ddv = SIMD_MUL_P(dv, bv);
+      aav = SIMD_MUL_P(av, bv);
+      ccv = SIMD_MUL_P(cv, bv);
+      
+      store(&aa[ind], &aav);
+      store(&cc[ind], &ccv);
+      store(&dd[ind], &ddv);
+    }
+  }
+  
+  for(int i = 2; i < N; i++) {
+    int base = i * stride;
+    for(int j = 0; j < strip_len; j += SIMD_VEC) {
+      ind = base + j;
+      load(&av, &a[ind]);
+      load(&bv, &b[ind]);
+      load(&cv, &c[ind]);
+      load(&dv, &d[ind]);
+      
+      load(&aav, &aa[ind - stride]);
+      load(&ccv, &cc[ind - stride]);
+      load(&ddv, &dd[ind - stride]);
+      
+      // bbi   = static_cast<REAL>(1.0) / (b[ind] - a[ind] * cc[ind - stride]); 
+      tmp = SIMD_MUL_P(av, ccv);
+      bv = SIMD_SUB_P(bv, tmp);
+#if FPPREC == 0
+      bv = SIMD_RCP_P(bv);
+#elif FPPREC == 1
+      bv = SIMD_DIV_P(ones, bv);
+#endif
+      
+      //load(&ddv, &d[ind - stride]);
+      // dd[ind] = (d[ind] - a[ind]*dd[ind - stride]) * bbi;
+      ddv = SIMD_MUL_P(av, ddv);
+      ddv = SIMD_SUB_P(dv, ddv);
+      ddv = SIMD_MUL_P(ddv, bv);
+      
+      //load(&aav, &a[ind - stride]);
+      // aa[ind] = (     - a[ind]*aa[ind - stride]) * bbi;
+      aav = SIMD_MUL_P(av, aav);
+      aav = SIMD_MUL_P(aav, minusOnes);
+      aav = SIMD_MUL_P(aav, bv);
+      
+      // cc[ind] =                 c[ind]  * bbi;
+      ccv = SIMD_MUL_P(cv, bv);
+      
+      store(&aa[ind], &aav);
+      store(&cc[ind], &ccv);
+      store(&dd[ind], &ddv);
+    }
+  }
+  
+  SIMD_REG aavNew, ccvNew, ddvNew;
+  
+  for(int i = N - 3; i > 0; i--) {
+    int base = i * stride;
+    for(int j = 0; j < strip_len; j += SIMD_VEC) {
+      ind = base + j;
+      
+      load(&aavNew, &aa[ind]);
+      load(&ccvNew, &cc[ind]);
+      load(&ddvNew, &dd[ind]);
+      
+      load(&aav, &aa[ind + stride]);
+      load(&ccv, &cc[ind + stride]);
+      load(&ddv, &dd[ind + stride]);
+      
+      // dd[ind] = dd[ind] - cc[ind]*dd[ind + stride];
+      ddv = SIMD_MUL_P(ccvNew, ddv);
+      ddv = SIMD_SUB_P(ddvNew, ddv);
+      
+      //load(&aav, &aa[ind + stride]);
+      // aa[ind] = aa[ind] - cc[ind]*aa[ind + stride];
+      aav = SIMD_MUL_P(ccvNew, aav);
+      aav = SIMD_SUB_P(aavNew, aav);
+      
+      //load(&ccv, &cc[ind + stride]);
+      // cc[ind] =       - cc[ind]*cc[ind + stride];
+      ccv = SIMD_MUL_P(ccvNew, ccv);
+      ccv = SIMD_MUL_P(ccv, minusOnes);
+      
+      store(&aa[ind], &aav);
+      store(&cc[ind], &ccv);
+      store(&dd[ind], &ddv);
+    }
+  }
+  
+  for(int j = 0; j < strip_len; j += SIMD_VEC) {
+    load(&aavNew, &aa[j]);
+    load(&ccvNew, &cc[j]);
+    load(&ddvNew, &dd[j]);
+    
+    load(&aav, &aa[j + stride]);
+    load(&ccv, &cc[j + stride]);
+    load(&ddv, &dd[j + stride]);
+    
+    // bbi = static_cast<REAL>(1.0) / (static_cast<REAL>(1.0) - cc[0]*aa[stride]);
+    bv = SIMD_MUL_P(ccvNew, aav);
+    bv = SIMD_SUB_P(ones, bv);
+  #if FPPREC == 0
+    bv = SIMD_RCP_P(bv);
+  #elif FPPREC == 1
+    bv = SIMD_DIV_P(ones, bv);
+  #endif
+    
+    //load(&ddv, &dd[j + stride]);
+    // dd[0] =  bbi * ( dd[0] - cc[0]*dd[stride] );
+    ddv = SIMD_MUL_P(ccvNew, ddv);
+    ddv = SIMD_SUB_P(ddvNew, ddv);
+    ddv = SIMD_MUL_P(bv, ddv);
+    
+    // bbi *   aa[0];
+    aav = SIMD_MUL_P(bv, aavNew);
+    
+    //load(&ccv, &cc[j + stride]);
+    // cc[0] =  bbi * (       - cc[0]*cc[stride] );
+    ccv = SIMD_MUL_P(ccvNew, ccv);
+    ccv = SIMD_MUL_P(minusOnes, ccv);
+    ccv = SIMD_MUL_P(bv, ccv);
+    
+    store(&aa[j], &aav);
+    store(&cc[j], &ccv);
+    store(&dd[j], &ddv);
+  }
+}
+
+/*template<typename REAL>
+inline void thomas_forward_vec_strip(
+    const REAL *__restrict__ a, 
+    const REAL *__restrict__ b, 
+    const REAL *__restrict__ c, 
+    const REAL *__restrict__ d, 
+    const REAL *__restrict__ u, 
+          REAL *__restrict__ aa, 
+          REAL *__restrict__ cc, 
+          REAL *__restrict__ dd, 
+    const int N, 
+    const int stride,
+    const int strip_len) {
+
+  int ind = 0;
+  
+  SIMD_REG av, bv, cv, dv, uv, aav, ccv, ddv, tmp;
+  
+  SIMD_REG ones = SIMD_SET1_P(1.0);
+  SIMD_REG minusOnes = SIMD_SET1_P(-1.0);
+  
+  
+  
+  for(int i = 0; i < 2; i++) {
+    for(int j = 0; j < strip_len; j += SIMD_VEC) {
+    ind = i * stride + j;
+    load(&av, &a[ind]);
+    load(&bv, &b[ind]);
+    load(&cv, &c[ind]);
+    load(&dv, &d[ind]);
+    
+#if FPPREC == 0
+    bv = SIMD_RCP_P(bv);
+#elif FPPREC == 1
+    bv = SIMD_DIV_P(ones, bv);
+#endif
+    
+    ddv = SIMD_MUL_P(dv, bv);
+    aav = SIMD_MUL_P(av, bv);
+    ccv = SIMD_MUL_P(cv, bv);
+    
+    store(&aa[ind], &aav);
+    store(&cc[ind], &ccv);
+    store(&dd[ind], &ddv);
+    }
+  }
+  
+  for(int i = 2; i < N; i++) {
+    for(int j = 0; j < strip_len; j += SIMD_VEC) {
+    ind = i * stride + j;
+    load(&av, &a[ind]);
+    load(&bv, &b[ind]);
+    load(&cv, &c[ind]);
+    load(&dv, &d[ind]);
+    
+    load(&aav, &aa[ind - stride]);
+    load(&ccv, &cc[ind - stride]);
+    load(&ddv, &dd[ind - stride]);
+    
+    // bbi   = static_cast<REAL>(1.0) / (b[ind] - a[ind] * cc[ind - stride]); 
+    tmp = SIMD_MUL_P(av, ccv);
+    bv = SIMD_SUB_P(bv, tmp);
+#if FPPREC == 0
+    bv = SIMD_RCP_P(bv);
+#elif FPPREC == 1
+    bv = SIMD_DIV_P(ones, bv);
+#endif
+    
+    // dd[ind] = (d[ind] - a[ind]*dd[ind - stride]) * bbi;
+    ddv = SIMD_MUL_P(av, ddv);
+    ddv = SIMD_SUB_P(dv, ddv);
+    ddv = SIMD_MUL_P(ddv, bv);
+    
+    // aa[ind] = (     - a[ind]*aa[ind - stride]) * bbi;
+    aav = SIMD_MUL_P(av, aav);
+    aav = SIMD_MUL_P(aav, minusOnes);
+    aav = SIMD_MUL_P(aav, bv);
+    
+    // cc[ind] =                 c[ind]  * bbi;
+    ccv = SIMD_MUL_P(cv, bv);
+    
+    store(&aa[ind], &aav);
+    store(&cc[ind], &ccv);
+    store(&dd[ind], &ddv);
+    }
+  }
+  
+  for(int j = 0; j < strip_len; j += SIMD_VEC) {
+  
+  ind = (N - 2) * stride + j;
+  
+  SIMD_REG aavNew, ccvNew, ddvNew;
+  
+  load(&aav, &aa[ind]);
+  load(&ccv, &cc[ind]);
+  load(&ddv, &dd[ind]);
+  
+  for(int i = N - 3; i > 0; i--) {
+    ind = i * stride + j;
+    
+    load(&aavNew, &aa[ind]);
+    load(&ccvNew, &cc[ind]);
+    load(&ddvNew, &dd[ind]);
+    
+    // dd[ind] = dd[ind] - cc[ind]*dd[ind + stride];
+    ddv = SIMD_MUL_P(ccvNew, ddv);
+    ddv = SIMD_SUB_P(ddvNew, ddv);
+    
+    // aa[ind] = aa[ind] - cc[ind]*aa[ind + stride];
+    aav = SIMD_MUL_P(ccvNew, aav);
+    aav = SIMD_SUB_P(aavNew, aav);
+    
+    // cc[ind] =       - cc[ind]*cc[ind + stride];
+    ccv = SIMD_MUL_P(ccvNew, ccv);
+    ccv = SIMD_MUL_P(ccv, minusOnes);
+    
+    store(&aa[ind], &aav);
+    store(&cc[ind], &ccv);
+    store(&dd[ind], &ddv);
+  }
+  
+  load(&aavNew, &aa[j]);
+  load(&ccvNew, &cc[j]);
+  load(&ddvNew, &dd[j]);
+  
+  // bbi = static_cast<REAL>(1.0) / (static_cast<REAL>(1.0) - cc[0]*aa[stride]);
+  bv = SIMD_MUL_P(ccvNew, aav);
+  bv = SIMD_SUB_P(ones, bv);
+#if FPPREC == 0
+  bv = SIMD_RCP_P(bv);
+#elif FPPREC == 1
+  bv = SIMD_DIV_P(ones, bv);
+#endif
+  
+  // dd[0] =  bbi * ( dd[0] - cc[0]*dd[stride] );
+  ddv = SIMD_MUL_P(ccvNew, ddv);
+  ddv = SIMD_SUB_P(ddvNew, ddv);
+  ddv = SIMD_MUL_P(bv, ddv);
+  
+  // bbi *   aa[0];
+  aav = SIMD_MUL_P(bv, aavNew);
+  
+  // cc[0] =  bbi * (       - cc[0]*cc[stride] );
+  ccv = SIMD_MUL_P(ccvNew, ccv);
+  ccv = SIMD_MUL_P(minusOnes, ccv);
+  ccv = SIMD_MUL_P(bv, ccv);
+  
+  store(&aa[j], &aav);
+  store(&cc[j], &ccv);
+  store(&dd[j], &ddv);
+  }
+}*/
+
+//
 // Modified Thomas backward pass
 //
 template<typename REAL>
