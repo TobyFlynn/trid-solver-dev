@@ -439,7 +439,7 @@ int main(int argc, char* argv[]) {
     
     #pragma omp parallel for
     for(int id=0; id<app.n_sys_gx; id++) {
-      int base = id*app.nx_pad;
+      int base = id * app.nx_pad;
       thomas_forward(&app.ax[base],&app.bx[base],&app.cx[base],&app.du[base],&app.h_u[base],
                      &app.aa[base],&app.cc[base],&app.dd[base],app.nx, 1);
     }
@@ -452,12 +452,20 @@ int main(int argc, char* argv[]) {
     #pragma omp parallel for
     for(int id=0; id<app.n_sys_gx; id++) {
       // Gather coefficients of a,c,d
-      mpi.halo_sndbuf_x[id*3*2 + 0*2     ] = app.aa[id*app.nx_pad           ];
+      /*mpi.halo_sndbuf_x[id*3*2 + 0*2     ] = app.aa[id*app.nx_pad           ];
       mpi.halo_sndbuf_x[id*3*2 + 0*2 + 1 ] = app.aa[id*app.nx_pad + app.nx-1];
       mpi.halo_sndbuf_x[id*3*2 + 1*2     ] = app.cc[id*app.nx_pad           ];
       mpi.halo_sndbuf_x[id*3*2 + 1*2 + 1 ] = app.cc[id*app.nx_pad + app.nx-1];
       mpi.halo_sndbuf_x[id*3*2 + 2*2     ] = app.dd[id*app.nx_pad           ];
-      mpi.halo_sndbuf_x[id*3*2 + 2*2 + 1 ] = app.dd[id*app.nx_pad + app.nx-1];
+      mpi.halo_sndbuf_x[id*3*2 + 2*2 + 1 ] = app.dd[id*app.nx_pad + app.nx-1];*/
+      int halo_base = id * 6;
+      int data_base = id * app.nx_pad;
+      mpi.halo_sndbuf_x[halo_base] = app.aa[data_base];
+      mpi.halo_sndbuf_x[halo_base + 1] = app.aa[data_base + app.nx-1];
+      mpi.halo_sndbuf_x[halo_base + 2] = app.cc[data_base];
+      mpi.halo_sndbuf_x[halo_base + 3] = app.cc[data_base + app.nx-1];
+      mpi.halo_sndbuf_x[halo_base + 4] = app.dd[data_base];
+      mpi.halo_sndbuf_x[halo_base + 5] = app.dd[data_base + app.nx-1];
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_x[1], app.elapsed_name[1]);
 
@@ -475,12 +483,20 @@ int main(int argc, char* argv[]) {
       for(int p=0; p<mpi.pdims[0]/*mpi.procs*/; p++) {
         for(int id=0; id<app.n_sys_lx; id++) {
           //printf("p = %d is = %d \n",p,id);
-          app.aa_rx[id*app.sys_len_lx + p*2    ] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 0*2     ];
+          /*app.aa_rx[id*app.sys_len_lx + p*2    ] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 0*2     ];
           app.aa_rx[id*app.sys_len_lx + p*2 + 1] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 0*2 + 1 ];
           app.cc_rx[id*app.sys_len_lx + p*2    ] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 1*2     ];
           app.cc_rx[id*app.sys_len_lx + p*2 + 1] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 1*2 + 1 ];
           app.dd_rx[id*app.sys_len_lx + p*2    ] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 2*2     ];
-          app.dd_rx[id*app.sys_len_lx + p*2 + 1] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 2*2 + 1 ];
+          app.dd_rx[id*app.sys_len_lx + p*2 + 1] = mpi.halo_rcvbuf_x[p*app.n_sys_lx*3*2 + id*3*2 + 2*2 + 1 ];*/
+          int halo_base = p*app.n_sys_lx*6 + id*6;
+          int data_base = id*app.sys_len_lx + p*2;
+          app.aa_rx[data_base]     = mpi.halo_rcvbuf_x[halo_base];
+          app.aa_rx[data_base + 1] = mpi.halo_rcvbuf_x[halo_base + 1];
+          app.cc_rx[data_base]     = mpi.halo_rcvbuf_x[halo_base + 2];
+          app.cc_rx[data_base + 1] = mpi.halo_rcvbuf_x[halo_base + 3];
+          app.dd_rx[data_base]     = mpi.halo_rcvbuf_x[halo_base + 4];
+          app.dd_rx[data_base + 1] = mpi.halo_rcvbuf_x[halo_base + 5];
         }
       }
     }
@@ -491,7 +507,7 @@ int main(int argc, char* argv[]) {
       // Compute reduced system
       #pragma omp parallel for
       for(int id=0; id<app.n_sys_lx; id++) {
-        int base = id*app.sys_len_lx;
+        int base = id *app.sys_len_lx;
         thomas_on_reduced(&app.aa_rx[base], &app.cc_rx[base], &app.dd_rx[base], app.sys_len_lx, 1);
       }
     }
@@ -503,8 +519,10 @@ int main(int argc, char* argv[]) {
       #pragma omp parallel for
       for(int p=0; p<mpi.pdims[0]/*mpi.procs*/; p++) {
         for(int id=0; id<app.n_sys_lx; id++) {
-          mpi.halo_rcvbuf_x[p*app.n_sys_lx*2 + id*2    ] = app.dd_rx[id*app.sys_len_lx + p*2    ];
-          mpi.halo_rcvbuf_x[p*app.n_sys_lx*2 + id*2 + 1] = app.dd_rx[id*app.sys_len_lx + p*2 + 1];
+          int halo_base = p*app.n_sys_lx*2 + id*2;
+          int data_base = id*app.sys_len_lx + p*2;
+          mpi.halo_rcvbuf_x[halo_base]     = app.dd_rx[data_base];
+          mpi.halo_rcvbuf_x[halo_base + 1] = app.dd_rx[data_base + 1];
         }
       }
     }
@@ -523,15 +541,30 @@ int main(int argc, char* argv[]) {
     #pragma omp parallel for
     for(int id=0; id<app.n_sys_gx; id++) {
       // Gather coefficients of a,c,d
-      app.dd[id*app.nx_pad           ] = mpi.halo_sndbuf_x[id*2    ];
-      app.dd[id*app.nx_pad + app.nx-1] = mpi.halo_sndbuf_x[id*2 + 1];
+      int data_base = id*app.nx_pad;
+      int halo_base = id*2;
+      app.dd[data_base] = mpi.halo_sndbuf_x[halo_base];
+      app.dd[data_base + app.nx-1] = mpi.halo_sndbuf_x[halo_base + 1];
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_x[7], app.elapsed_name[7]);
 
 
     // Do the backward pass of modified Thomas
     timing_start(app.prof, &timer2);
-    #pragma omp parallel for
+    if(INC) {
+      #pragma omp parallel for
+      for(int id=0; id<app.n_sys_gx; id++) {
+        int ind = id * app.nx_pad;
+        thomas_backwardInc(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.h_u[ind],app.nx,1);
+      }
+    } else {
+      #pragma omp parallel for
+      for(int id=0; id<app.n_sys_gx; id++) {
+        int ind = id * app.nx_pad;
+        thomas_backward(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.h_u[ind],app.nx,1);
+      }
+    }
+    /*#pragma omp parallel for
     for(int id=0; id<app.n_sys_gx; id++) {
       int ind = id*app.nx_pad;
       //thomas_backward(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.h_u[ind],app.nx,1);
@@ -540,7 +573,7 @@ int main(int argc, char* argv[]) {
       } else {
         thomas_backward(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.du[ind],app.nx,1);
       }
-    }
+    }*/
     timing_end(app.prof, &timer2, &app.elapsed_time_x[8], app.elapsed_name[8]);
 
     //MPI_Barrier(mpi.x_comm/*MPI_COMM_WORLD*/);
@@ -558,9 +591,11 @@ int main(int argc, char* argv[]) {
 
     // Do the modified Thomas
     timing_start(app.prof, &timer2);
+    #pragma omp parallel for
     for(int z = 0; z < app.nz; z++) {
+      int z_base = z * app.nx_pad * app.ny;
       for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
-        int base = z * app.nx_pad * app.ny + x;
+        int base = z_base + x;
         thomas_forward_vec(&app.ay[base],&app.by[base],&app.cy[base],&app.du[base],
                            &app.h_u[base],&app.aa[base],&app.cc[base],&app.dd[base],
                            app.ny,app.nx_pad);
@@ -568,9 +603,11 @@ int main(int argc, char* argv[]) {
     }
     
     if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
+      #pragma omp parallel for
       for(int z = 0; z < app.nz; z++) {
+        int z_base = z * app.nx_pad * app.ny;
         for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
-          int base = z * app.nx_pad * app.ny + x;
+          int base = z_base + x;
           thomas_forward(&app.ay[base],&app.by[base],&app.cy[base],&app.du[base],&app.h_u[base],
                      &app.aa[base],&app.cc[base],&app.dd[base],app.ny,app.nx_pad);
         }
@@ -585,13 +622,14 @@ int main(int argc, char* argv[]) {
     for(int id=0; id<app.n_sys_gy; id++) {
       int start = (id/app.nx) * app.nx_pad * app.ny + (id % app.nx);
       int end = start + (app.nx_pad * (app.ny-1));
+      int halo_base = id*6;
       // Gather coefficients of a,c,d
-      mpi.halo_sndbuf_y[id*3*2 + 0*2     ] = app.aa[start];
-      mpi.halo_sndbuf_y[id*3*2 + 0*2 + 1 ] = app.aa[end];
-      mpi.halo_sndbuf_y[id*3*2 + 1*2     ] = app.cc[start];
-      mpi.halo_sndbuf_y[id*3*2 + 1*2 + 1 ] = app.cc[end];
-      mpi.halo_sndbuf_y[id*3*2 + 2*2     ] = app.dd[start];
-      mpi.halo_sndbuf_y[id*3*2 + 2*2 + 1 ] = app.dd[end];
+      mpi.halo_sndbuf_y[halo_base] = app.aa[start];
+      mpi.halo_sndbuf_y[halo_base + 1] = app.aa[end];
+      mpi.halo_sndbuf_y[halo_base + 2] = app.cc[start];
+      mpi.halo_sndbuf_y[halo_base + 3] = app.cc[end];
+      mpi.halo_sndbuf_y[halo_base + 4] = app.dd[start];
+      mpi.halo_sndbuf_y[halo_base + 5] = app.dd[end];
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_y[1], app.elapsed_name[1]);
 
@@ -608,12 +646,14 @@ int main(int argc, char* argv[]) {
       for(int p=0; p<mpi.pdims[1]/*mpi.procs*/; p++) {
         for(int id=0; id<app.n_sys_ly; id++) {
           //printf("p = %d is = %d \n",p,id);
-          app.aa_ry[id*app.sys_len_ly + p*2    ] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 0*2     ];
-          app.aa_ry[id*app.sys_len_ly + p*2 + 1] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 0*2 + 1 ];
-          app.cc_ry[id*app.sys_len_ly + p*2    ] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 1*2     ];
-          app.cc_ry[id*app.sys_len_ly + p*2 + 1] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 1*2 + 1 ];
-          app.dd_ry[id*app.sys_len_ly + p*2    ] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 2*2     ];
-          app.dd_ry[id*app.sys_len_ly + p*2 + 1] = mpi.halo_rcvbuf_y[p*app.n_sys_ly*3*2 + id*3*2 + 2*2 + 1 ];
+          int halo_base = p*app.n_sys_ly*6 + id*6;
+          int data_base = id*app.sys_len_ly + p*2;
+          app.aa_ry[data_base]     = mpi.halo_rcvbuf_y[halo_base];
+          app.aa_ry[data_base + 1] = mpi.halo_rcvbuf_y[halo_base + 1];
+          app.cc_ry[data_base]     = mpi.halo_rcvbuf_y[halo_base + 2];
+          app.cc_ry[data_base + 1] = mpi.halo_rcvbuf_y[halo_base + 3];
+          app.dd_ry[data_base]     = mpi.halo_rcvbuf_y[halo_base + 4];
+          app.dd_ry[data_base + 1] = mpi.halo_rcvbuf_y[halo_base + 5];
         }
       }
     }
@@ -624,7 +664,7 @@ int main(int argc, char* argv[]) {
     if(mpi.coords[1] == 0) {
       #pragma omp parallel for
       for(int id=0; id<app.n_sys_ly; id++) {
-        int base = id*app.sys_len_ly;
+        int base = id * app.sys_len_ly;
         thomas_on_reduced(&app.aa_ry[base], &app.cc_ry[base], &app.dd_ry[base], app.sys_len_ly, 1);
       }
     }
@@ -638,8 +678,10 @@ int main(int argc, char* argv[]) {
       #pragma omp parallel for
       for(int p=0; p<mpi.pdims[1]/*mpi.procs*/; p++) {
         for(int id=0; id<app.n_sys_ly; id++) {
-          mpi.halo_rcvbuf_y[p*app.n_sys_ly*2 + id*2    ] = app.dd_ry[id*app.sys_len_ly + p*2    ];
-          mpi.halo_rcvbuf_y[p*app.n_sys_ly*2 + id*2 + 1] = app.dd_ry[id*app.sys_len_ly + p*2 + 1];
+          int halo_base = p*app.n_sys_ly*2 + id*2;
+          int data_base = id*app.sys_len_ly + p*2;
+          mpi.halo_rcvbuf_y[halo_base]     = app.dd_ry[data_base];
+          mpi.halo_rcvbuf_y[halo_base + 1] = app.dd_ry[data_base + 1];
         }
       }
     }
@@ -657,33 +699,52 @@ int main(int argc, char* argv[]) {
     for(int id=0; id<app.n_sys_gy; id++) {
       int start = (id/app.nx) * app.nx_pad * app.ny + (id % app.nx);
       int end = start + (app.nx_pad * (app.ny-1));
-      app.dd[start] = mpi.halo_sndbuf_y[id*2];
-      app.dd[end] = mpi.halo_sndbuf_y[id*2 + 1];
+      int halo_base = id*2;
+      app.dd[start] = mpi.halo_sndbuf_y[halo_base];
+      app.dd[end]   = mpi.halo_sndbuf_y[halo_base + 1];
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_y[7], app.elapsed_name[7]);
 
 
     // Do the backward pass of modified Thomas
     timing_start(app.prof, &timer2);
-    for(int z = 0; z < app.nz; z++) {
-      for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
-        int base = z * app.nx_pad * app.ny + x;
-        if(INC) {
+    if(INC) {
+      #pragma omp parallel for
+      for(int z = 0; z < app.nz; z++) {
+        int z_base = z * app.nx_pad * app.ny;
+        for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
+          int base = z_base + x;
           thomas_backwardInc_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.ny,app.nx_pad);
-        } else {
-          thomas_backward_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.du[base],app.ny,app.nx_pad);
         }
       }
-    }
-    
-    if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
-      for(int z = 0; z < app.nz; z++) {
-        for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
-          int base = z * app.nx_pad * app.ny + x;
-          if(INC) {
+      
+      if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
+        #pragma omp parallel for
+        for(int z = 0; z < app.nz; z++) {
+          int z_base = z * app.nx_pad * app.ny;
+          for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
+            int base = z_base + x;
             thomas_backwardInc(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.ny,app.nx_pad);
-          } else {
-            thomas_backward(&app.aa[base],&app.cc[base],&app.dd[base],&app.du[base],app.ny,app.nx_pad);
+          }
+        }
+      }
+    } else {
+      #pragma omp parallel for
+      for(int z = 0; z < app.nz; z++) {
+        int z_base = z * app.nx_pad * app.ny;
+        for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
+          int base = z_base + x;
+          thomas_backward_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.ny,app.nx_pad);
+        }
+      }
+      
+      if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
+        #pragma omp parallel for
+        for(int z = 0; z < app.nz; z++) {
+          int z_base = z * app.nx_pad * app.ny;
+          for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
+            int base = z_base + x;
+            thomas_backward(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.ny,app.nx_pad);
           }
         }
       }
@@ -703,9 +764,11 @@ int main(int argc, char* argv[]) {
     timing_start(app.prof, &timer);
     // Do the modified Thomas
     timing_start(app.prof, &timer2);
+     #pragma omp parallel for
     for(int y = 0; y < app.ny; y++) {
+      int y_base = y * app.nx_pad;
       for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
-        int base = y * app.nx_pad + x;
+        int base = y_base + x;
         thomas_forward_vec(&app.az[base],&app.bz[base],&app.cz[base],&app.du[base],
                            &app.h_u[base],&app.aa[base],&app.cc[base],&app.dd[base],
                            app.nz,app.nx_pad * app.ny);
@@ -713,9 +776,11 @@ int main(int argc, char* argv[]) {
     }
     
     if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
+       #pragma omp parallel for
       for(int y = 0; y < app.ny; y++) {
+        int y_base = y * app.nx_pad;
         for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
-          int base = y * app.nx_pad + x;
+          int base = y_base + x;
           thomas_forward(&app.az[base],&app.bz[base],&app.cz[base],&app.du[base],&app.h_u[base],
                      &app.aa[base],&app.cc[base],&app.dd[base],app.nz,app.nx_pad * app.ny);
         }
@@ -730,13 +795,14 @@ int main(int argc, char* argv[]) {
     for(int id=0; id<app.n_sys_gz; id++) {
       int start = (id/app.nx) * app.nx_pad + (id % app.nx);
       int end = start + (app.nx_pad * app.ny * (app.nz - 1));
+      int halo_base = id*6;
       // Gather coefficients of a,c,d
-      mpi.halo_sndbuf_z[id*3*2 + 0*2     ] = app.aa[start];
-      mpi.halo_sndbuf_z[id*3*2 + 0*2 + 1 ] = app.aa[end];
-      mpi.halo_sndbuf_z[id*3*2 + 1*2     ] = app.cc[start];
-      mpi.halo_sndbuf_z[id*3*2 + 1*2 + 1 ] = app.cc[end];
-      mpi.halo_sndbuf_z[id*3*2 + 2*2     ] = app.dd[start];
-      mpi.halo_sndbuf_z[id*3*2 + 2*2 + 1 ] = app.dd[end];
+      mpi.halo_sndbuf_z[halo_base] = app.aa[start];
+      mpi.halo_sndbuf_z[halo_base + 1] = app.aa[end];
+      mpi.halo_sndbuf_z[halo_base + 2] = app.cc[start];
+      mpi.halo_sndbuf_z[halo_base + 3] = app.cc[end];
+      mpi.halo_sndbuf_z[halo_base + 4] = app.dd[start];
+      mpi.halo_sndbuf_z[halo_base + 5] = app.dd[end];
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_z[1], app.elapsed_name[1]);
     
@@ -753,12 +819,14 @@ int main(int argc, char* argv[]) {
       for(int p=0; p<mpi.pdims[2]/*mpi.procs*/; p++) {
         for(int id=0; id<app.n_sys_lz; id++) {
           //printf("p = %d is = %d \n",p,id);
-          app.aa_rz[id*app.sys_len_lz + p*2    ] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 0*2     ];
-          app.aa_rz[id*app.sys_len_lz + p*2 + 1] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 0*2 + 1 ];
-          app.cc_rz[id*app.sys_len_lz + p*2    ] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 1*2     ];
-          app.cc_rz[id*app.sys_len_lz + p*2 + 1] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 1*2 + 1 ];
-          app.dd_rz[id*app.sys_len_lz + p*2    ] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 2*2     ];
-          app.dd_rz[id*app.sys_len_lz + p*2 + 1] = mpi.halo_rcvbuf_z[p*app.n_sys_lz*3*2 + id*3*2 + 2*2 + 1 ];
+          int data_base = id*app.sys_len_lz + p*2;
+          int halo_base = p*app.n_sys_lz*6 + id*6;
+          app.aa_rz[data_base]     = mpi.halo_rcvbuf_z[halo_base];
+          app.aa_rz[data_base + 1] = mpi.halo_rcvbuf_z[halo_base + 1];
+          app.cc_rz[data_base]     = mpi.halo_rcvbuf_z[halo_base + 2];
+          app.cc_rz[data_base + 1] = mpi.halo_rcvbuf_z[halo_base + 3];
+          app.dd_rz[data_base]     = mpi.halo_rcvbuf_z[halo_base + 4];
+          app.dd_rz[data_base + 1] = mpi.halo_rcvbuf_z[halo_base + 5];
         }
       }
     }
@@ -783,8 +851,10 @@ int main(int argc, char* argv[]) {
       #pragma omp parallel for
       for(int p=0; p<mpi.pdims[2]/*mpi.procs*/; p++) {
         for(int id=0; id<app.n_sys_lz; id++) {
-          mpi.halo_rcvbuf_z[p*app.n_sys_lz*2 + id*2    ] = app.dd_rz[id*app.sys_len_lz + p*2    ];
-          mpi.halo_rcvbuf_z[p*app.n_sys_lz*2 + id*2 + 1] = app.dd_rz[id*app.sys_len_lz + p*2 + 1];
+          int halo_base = p*app.n_sys_lz*2 + id*2;
+          int data_base = id*app.sys_len_lz + p*2;
+          mpi.halo_rcvbuf_z[halo_base]     = app.dd_rz[data_base];
+          mpi.halo_rcvbuf_z[halo_base + 1] = app.dd_rz[data_base + 1];
         }
       }
     }
@@ -802,32 +872,53 @@ int main(int argc, char* argv[]) {
     for(int id=0; id<app.n_sys_gz; id++) {
       int start = (id/app.nx) * app.nx_pad + (id % app.nx);
       int end = start + (app.nx_pad * app.ny * (app.nz - 1));
-      app.dd[start] = mpi.halo_sndbuf_z[id*2];
-      app.dd[end] = mpi.halo_sndbuf_z[id*2 + 1];
+      int halo_base = id*2;
+      app.dd[start] = mpi.halo_sndbuf_z[halo_base];
+      app.dd[end]   = mpi.halo_sndbuf_z[halo_base + 1];
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_z[7], app.elapsed_name[7]);
 
     // Do the backward pass of modified Thomas
     timing_start(app.prof, &timer2);
-    for(int y = 0; y < app.ny; y++) {
-      for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
-        int base = y * app.nx_pad + x;
-        if(INC) {
-          thomas_backwardInc_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.nz,app.nx_pad * app.ny);
-        } else {
-          thomas_backward_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.du[base],app.nz,app.nx_pad * app.ny);
+    if(INC) {
+      const int stride = app.nx_pad * app.ny; 
+      #pragma omp parallel for
+      for(int y = 0; y < app.ny; y++) {
+        int y_base = y * app.nx_pad;
+        for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
+          int base = y_base + x;
+          thomas_backwardInc_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.nz,stride);
         }
       }
-    }
-    
-    if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
+      
+      if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
+        #pragma omp parallel for
+        for(int y = 0; y < app.ny; y++) {
+          int y_base = y * app.nx_pad;
+          for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
+            int base = y_base + x;
+            thomas_backwardInc(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.nz,stride);
+          }
+        }
+      }
+    } else {
+      const int stride = app.nx_pad * app.ny; 
+      #pragma omp parallel for
       for(int y = 0; y < app.ny; y++) {
-        for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
-          int base = y * app.nx_pad + x;
-          if(INC) {
-            thomas_backwardInc(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.nz,app.nx_pad * app.ny);
-          } else {
-            thomas_backward(&app.aa[base],&app.cc[base],&app.dd[base],&app.du[base],app.nz,app.nx_pad * app.ny);
+        int y_base = y * app.nx_pad;
+        for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
+          int base = y_base + x;
+          thomas_backwardInc_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.nz,stride);
+        }
+      }
+      
+      if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
+        #pragma omp parallel for
+        for(int y = 0; y < app.ny; y++) {
+          int y_base = y * app.nx_pad;
+          for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
+            int base = y_base + x;
+            thomas_backwardInc(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.nz,stride);
           }
         }
       }

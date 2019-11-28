@@ -108,8 +108,8 @@ inline void thomas_on_reduced(
     const REAL* __restrict__ aa_r, 
     const REAL* __restrict__ cc_r, 
           REAL* __restrict__ dd_r, 
-    int N, 
-    int stride) {
+    const int N, 
+    const int stride) {
   int   i, ind = 0;
   FP aa, bb, cc, dd, c2[N_MAX], d2[N_MAX];
   //
@@ -156,8 +156,8 @@ inline void thomas_forward(
           REAL *__restrict__ aa, 
           REAL *__restrict__ cc, 
           REAL *__restrict__ dd, 
-    int N, 
-    int stride) {
+    const int N, 
+    const int stride) {
 
   REAL bbi;
   int ind = 0;
@@ -215,8 +215,8 @@ inline void thomas_forward_vec(
           REAL *__restrict__ aa, 
           REAL *__restrict__ cc, 
           REAL *__restrict__ dd, 
-    int N, 
-    int stride) {
+    const int N, 
+    const int stride) {
 
   /*REAL bbi;*/
   int ind = 0;
@@ -356,8 +356,8 @@ inline void thomas_backward_vec(
     const REAL *__restrict__ cc, 
     const REAL *__restrict__ dd, 
           REAL *__restrict__ d, 
-    int N, 
-    int stride) {
+    const int N, 
+    const int stride) {
 
   int ind = 0;
   
@@ -392,8 +392,8 @@ inline void thomas_backward(
     const REAL *__restrict__ cc, 
     const REAL *__restrict__ dd, 
           REAL *__restrict__ d, 
-    int N, 
-    int stride) {
+    const int N, 
+    const int stride) {
 
   int ind = 0;
   
@@ -413,8 +413,8 @@ inline void thomas_backwardInc_vec(
     const REAL *__restrict__ cc, 
     const REAL *__restrict__ dd, 
           REAL *__restrict__ u, 
-    int N, 
-    int stride) {
+    const int N, 
+    const int stride) {
 
   int ind = 0;
   
@@ -461,8 +461,8 @@ inline void thomas_backwardInc(
     const REAL *__restrict__ cc, 
     const REAL *__restrict__ dd, 
           REAL *__restrict__ u, 
-    int N, 
-    int stride) {
+    const int N, 
+    const int stride) {
 
   int ind = 0;
   
