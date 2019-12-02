@@ -564,16 +564,6 @@ int main(int argc, char* argv[]) {
         thomas_backward(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.h_u[ind],app.nx,1);
       }
     }
-    /*#pragma omp parallel for
-    for(int id=0; id<app.n_sys_gx; id++) {
-      int ind = id*app.nx_pad;
-      //thomas_backward(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.h_u[ind],app.nx,1);
-      if(INC) {
-        thomas_backwardInc(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.h_u[ind],app.nx,1);
-      } else {
-        thomas_backward(&app.aa[ind],&app.cc[ind],&app.dd[ind],&app.du[ind],app.nx,1);
-      }
-    }*/
     timing_end(app.prof, &timer2, &app.elapsed_time_x[8], app.elapsed_name[8]);
 
     //MPI_Barrier(mpi.x_comm/*MPI_COMM_WORLD*/);
@@ -596,19 +586,7 @@ int main(int argc, char* argv[]) {
       int base = z * app.nx_pad * app.ny;
       thomas_forward_vec_strip(&app.ay[base],&app.by[base],&app.cy[base],&app.du[base],
                            &app.h_u[base],&app.aa[base],&app.cc[base],&app.dd[base],
-                           app.ny,app.nx_pad, ROUND_DOWN(app.nx, SIMD_VEC));
-    }
-    
-    if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
-      #pragma omp parallel for
-      for(int z = 0; z < app.nz; z++) {
-        int z_base = z * app.nx_pad * app.ny;
-        for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
-          int base = z_base + x;
-          thomas_forward(&app.ay[base],&app.by[base],&app.cy[base],&app.du[base],&app.h_u[base],
-                     &app.aa[base],&app.cc[base],&app.dd[base],app.ny,app.nx_pad);
-        }
-      }
+                           app.ny,app.nx_pad, app.nx);
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_y[0], app.elapsed_name[0]);
 
@@ -708,42 +686,16 @@ int main(int argc, char* argv[]) {
     if(INC) {
       #pragma omp parallel for
       for(int z = 0; z < app.nz; z++) {
-        int z_base = z * app.nx_pad * app.ny;
-        for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
-          int base = z_base + x;
-          thomas_backwardInc_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.ny,app.nx_pad);
-        }
-      }
-      
-      if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
-        #pragma omp parallel for
-        for(int z = 0; z < app.nz; z++) {
-          int z_base = z * app.nx_pad * app.ny;
-          for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
-            int base = z_base + x;
-            thomas_backwardInc(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.ny,app.nx_pad);
-          }
-        }
+        int base = z * app.nx_pad * app.ny;
+        thomas_backwardInc_vec_strip(&app.aa[base],&app.cc[base],&app.dd[base], &app.h_u[base],
+                            app.ny,app.nx_pad, app.nx);
       }
     } else {
       #pragma omp parallel for
       for(int z = 0; z < app.nz; z++) {
-        int z_base = z * app.nx_pad * app.ny;
-        for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
-          int base = z_base + x;
-          thomas_backward_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.ny,app.nx_pad);
-        }
-      }
-      
-      if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
-        #pragma omp parallel for
-        for(int z = 0; z < app.nz; z++) {
-          int z_base = z * app.nx_pad * app.ny;
-          for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
-            int base = z_base + x;
-            thomas_backward(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.ny,app.nx_pad);
-          }
-        }
+        int base = z * app.nx_pad * app.ny;
+        thomas_backward_vec_strip(&app.aa[base],&app.cc[base],&app.dd[base], &app.h_u[base],
+                            app.ny,app.nx_pad, app.nx);
       }
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_y[8], app.elapsed_name[8]);
@@ -766,19 +718,7 @@ int main(int argc, char* argv[]) {
       int base = y * app.nx_pad;
       thomas_forward_vec_strip(&app.az[base],&app.bz[base],&app.cz[base],&app.du[base],
                            &app.h_u[base],&app.aa[base],&app.cc[base],&app.dd[base],
-                           app.nz,app.nx_pad * app.ny, ROUND_DOWN(app.nx, SIMD_VEC));
-    }
-    
-    if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
-       #pragma omp parallel for
-      for(int y = 0; y < app.ny; y++) {
-        int y_base = y * app.nx_pad;
-        for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
-          int base = y_base + x;
-          thomas_forward(&app.az[base],&app.bz[base],&app.cz[base],&app.du[base],&app.h_u[base],
-                     &app.aa[base],&app.cc[base],&app.dd[base],app.nz,app.nx_pad * app.ny);
-        }
-      }
+                           app.nz,app.nx_pad * app.ny, /*ROUND_DOWN(app.nx, SIMD_VEC)*/app.nx);
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_z[0], app.elapsed_name[0]);
 
@@ -875,46 +815,16 @@ int main(int argc, char* argv[]) {
     // Do the backward pass of modified Thomas
     timing_start(app.prof, &timer2);
     if(INC) {
-      const int stride = app.nx_pad * app.ny; 
-      #pragma omp parallel for
       for(int y = 0; y < app.ny; y++) {
-        int y_base = y * app.nx_pad;
-        for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
-          int base = y_base + x;
-          thomas_backwardInc_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.nz,stride);
-        }
-      }
-      
-      if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
-        #pragma omp parallel for
-        for(int y = 0; y < app.ny; y++) {
-          int y_base = y * app.nx_pad;
-          for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
-            int base = y_base + x;
-            thomas_backwardInc(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.nz,stride);
-          }
-        }
+        int base = y * app.nx_pad;
+        thomas_backwardInc_vec_strip(&app.aa[base],&app.cc[base],&app.dd[base], &app.h_u[base],
+                            app.nz,app.nx_pad * app.ny, app.nx);
       }
     } else {
-      const int stride = app.nx_pad * app.ny; 
-      #pragma omp parallel for
       for(int y = 0; y < app.ny; y++) {
-        int y_base = y * app.nx_pad;
-        for(int x = 0; x < ROUND_DOWN(app.nx, SIMD_VEC); x += SIMD_VEC) {
-          int base = y_base + x;
-          thomas_backwardInc_vec(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.nz,stride);
-        }
-      }
-      
-      if(ROUND_DOWN(app.nx, SIMD_VEC) < app.nx) {
-        #pragma omp parallel for
-        for(int y = 0; y < app.ny; y++) {
-          int y_base = y * app.nx_pad;
-          for(int x = ROUND_DOWN(app.nx, SIMD_VEC); x < app.nx; x++) {
-            int base = y_base + x;
-            thomas_backwardInc(&app.aa[base],&app.cc[base],&app.dd[base],&app.h_u[base],app.nz,stride);
-          }
-        }
+        int base = y * app.nx_pad;
+        thomas_backward_vec_strip(&app.aa[base],&app.cc[base],&app.dd[base], &app.h_u[base],
+                            app.nz,app.nx_pad * app.ny, app.nx);
       }
     }
     timing_end(app.prof, &timer2, &app.elapsed_time_z[8], app.elapsed_name[8]);
