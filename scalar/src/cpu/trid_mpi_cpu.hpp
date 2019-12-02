@@ -243,6 +243,139 @@ inline void thomas_forward(
 }
 
 template<typename REAL>
+inline void thomas_forward_x(
+    const REAL *__restrict__ a, 
+    const REAL *__restrict__ b, 
+    const REAL *__restrict__ c, 
+    const REAL *__restrict__ d, 
+    const REAL *__restrict__ u, 
+          REAL *__restrict__ aa, 
+          REAL *__restrict__ cc, 
+          REAL *__restrict__ dd, 
+    const int N,
+    const int sys_pad) {
+
+  REAL bbi;
+  int ind = 0;
+  int base = 0;
+  
+  REAL a_reg[SIMD_VEC];
+  REAL b_reg[SIMD_VEC];
+  REAL c_reg[SIMD_VEC];
+  REAL d_reg[SIMD_VEC];
+  
+  REAL aa_reg[SIMD_VEC];
+  REAL cc_reg[SIMD_VEC];
+  REAL dd_reg[SIMD_VEC];
+  
+  REAL aa_old_reg[SIMD_VEC];
+  REAL cc_old_reg[SIMD_VEC];
+  REAL dd_old_reg[SIMD_VEC];
+
+  // Start lower off-diagonal elimination
+  for(int i=0; i<2; i++) {
+    ind = i;
+    for(int j = 0; j < SIMD_VEC; j++) {
+      a_reg[j] = a[ind + (j * sys_pad)];
+      b_reg[j] = b[ind + (j * sys_pad)];
+      c_reg[j] = c[ind + (j * sys_pad)];
+      d_reg[j] = d[ind + (j * sys_pad)];
+    }
+    
+    #pragma omp simd
+    for(int j = 0; j < SIMD_VEC; j++) {
+      bbi   = static_cast<REAL>(1.0) / b_reg[j];
+      dd_reg[j] = d_reg[j] * bbi;
+      aa_reg[j] = a_reg[j] * bbi;
+      cc_reg[j] = c_reg[j] * bbi;
+    }
+    
+    for(int j = 0; j < SIMD_VEC; j++) {
+      aa[ind + (j * sys_pad)] = aa_reg[j];
+      cc[ind + (j * sys_pad)] = cc_reg[j];
+      dd[ind + (j * sys_pad)] = dd_reg[j];
+    }
+  }
+  
+  // Eliminate lower off-diagonal
+  for(int i=2; i<N; i++) {
+    ind = i;
+    for(int j = 0; j < SIMD_VEC; j++) {
+      a_reg[j] = a[ind + (j * sys_pad)];
+      b_reg[j] = b[ind + (j * sys_pad)];
+      c_reg[j] = c[ind + (j * sys_pad)];
+      d_reg[j] = d[ind + (j * sys_pad)];
+    }
+    
+    #pragma omp simd
+    for(int j = 0; j < SIMD_VEC; j++) {
+      bbi   = static_cast<REAL>(1.0) / (b_reg[j] - a_reg[j] * cc_reg[j]); 
+      
+      dd_reg[j] = (d_reg[j] - a_reg[j]*dd_reg[j]) * bbi;
+      aa_reg[j] = (     - a_reg[j]*aa_reg[j]) * bbi;
+      cc_reg[j] =                 c_reg[j]  * bbi;
+    }
+    
+    for(int j = 0; j < SIMD_VEC; j++) {
+      aa[ind + (j * sys_pad)] = aa_reg[j];
+      cc[ind + (j * sys_pad)] = cc_reg[j];
+      dd[ind + (j * sys_pad)] = dd_reg[j];
+    }
+  }
+  
+  ind = (N - 2);
+  for(int j = 0; j < SIMD_VEC; j++) {
+    aa_reg[j] = aa[ind + (j * sys_pad)];
+    cc_reg[j] = cc[ind + (j * sys_pad)];
+    dd_reg[j] = dd[ind + (j * sys_pad)];
+  }
+      
+  // Eliminate upper off-diagonal
+  for(int i=N-3; i>0; i--) {
+    ind = i;
+    for(int j = 0; j < SIMD_VEC; j++) {
+      aa_old_reg[j] = aa[ind + (j * sys_pad)];
+      cc_old_reg[j] = cc[ind + (j * sys_pad)];
+      dd_old_reg[j] = dd[ind + (j * sys_pad)];
+    }
+    
+    #pragma omp simd
+    for(int j = 0; j < SIMD_VEC; j++) {
+      dd_reg[j] = dd_old_reg[j] - cc_old_reg[j]*dd_reg[j];
+      aa_reg[j] = aa_old_reg[j] - cc_old_reg[j]*aa_reg[j];
+      cc_reg[j] =       - cc_old_reg[j]*cc_reg[j];
+    }
+    
+    for(int j = 0; j < SIMD_VEC; j++) {
+      aa[ind + (j * sys_pad)] = aa_reg[j];
+      cc[ind + (j * sys_pad)] = cc_reg[j];
+      dd[ind + (j * sys_pad)] = dd_reg[j];
+    }
+  }
+  
+  ind = 0;
+  for(int j = 0; j < SIMD_VEC; j++) {
+    aa_old_reg[j] = aa[ind + (j * sys_pad)];
+    cc_old_reg[j] = cc[ind + (j * sys_pad)];
+    dd_old_reg[j] = dd[ind + (j * sys_pad)];
+  }
+  
+  #pragma omp simd
+  for(int j = 0; j < SIMD_VEC; j++) {
+    bbi = static_cast<REAL>(1.0) / (static_cast<REAL>(1.0) - cc_old_reg[j]*aa_reg[j]);
+    dd_reg[j] =  bbi * ( dd_old_reg[j] - cc_old_reg[j]*dd_reg[j] );
+    aa_reg[j] =  bbi *   aa_old_reg[j];
+    cc_reg[j] =  bbi * (       - cc_old_reg[j]*cc_reg[j] );
+  }
+  
+  for(int j = 0; j < SIMD_VEC; j++) {
+    aa[ind + (j * sys_pad)] = aa_reg[j];
+    cc[ind + (j * sys_pad)] = cc_reg[j];
+    dd[ind + (j * sys_pad)] = dd_reg[j];
+  }
+}
+
+template<typename REAL>
 inline void thomas_forward_transpose_vec(
     const REAL *__restrict__ a, 
     const REAL *__restrict__ b, 

@@ -441,9 +441,9 @@ int main(int argc, char* argv[]) {
     for(int k = 0; k < app.nz; k++) {
       for(int j = 0; j < ROUND_DOWN(app.ny, SIMD_VEC); j+= SIMD_VEC) {
         int base = k * app.nx_pad * app.ny + j * app.nx;
-        thomas_forward_transpose_vec(&app.ax[base],&app.bx[base],&app.cx[base],&app.du[base],
+        thomas_forward_x(&app.ax[base],&app.bx[base],&app.cx[base],&app.du[base],
                                      &app.h_u[base],&app.aa[base],&app.cc[base],&app.dd[base],
-                                     app.nx,app.nx_pad, 1);
+                                     app.nx,app.nx_pad);
       }
     }
     
