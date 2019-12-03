@@ -124,6 +124,7 @@ inline void thomas_on_reduced(
   // reverse pass
   //
   dd_r[ind] = dd;
+  #pragma omp simd
   for(i=N-2; i>=0; i--) {
     ind    = ind - stride;
     dd     = d2[i] - c2[i]*dd;
@@ -336,7 +337,7 @@ inline void thomas_backward(
   int ind = 0;
   
   d[0] = dd[0];
-  #pragma ivdep
+  #pragma omp simd
   for (int i=1; i<N-1; i++) {
     ind = i * stride;
     //d[i] = dd[i];//dd[i] - aa[i]*dd[0] - cc[i]*dd[N-1];
@@ -357,7 +358,7 @@ inline void thomas_backwardInc(
   int ind = 0;
   
   u[0] += dd[0];
-  #pragma ivdep
+  #pragma omp simd
   for (int i=1; i<N-1; i++) {
     ind = i * stride;
     //d[i] = dd[i];//dd[i] - aa[i]*dd[0] - cc[i]*dd[N-1];
