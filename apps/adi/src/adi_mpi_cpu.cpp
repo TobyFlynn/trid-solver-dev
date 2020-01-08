@@ -713,13 +713,11 @@ int main(int argc, char* argv[]) {
     timing_start(app.prof, &timer);
     // Do the modified Thomas
     timing_start(app.prof, &timer2);
-     #pragma omp parallel for
-    for(int y = 0; y < app.ny; y++) {
-      int base = y * app.nx_pad;
-      thomas_forward_vec_strip(&app.az[base],&app.bz[base],&app.cz[base],&app.du[base],
-                           &app.h_u[base],&app.aa[base],&app.cc[base],&app.dd[base],
-                           app.nz,app.nx_pad * app.ny, /*ROUND_DOWN(app.nx, SIMD_VEC)*/app.nx);
-    }
+    
+    thomas_forward_vec_strip(&app.az[0],&app.bz[0],&app.cz[0],&app.du[0],
+                           &app.h_u[0],&app.aa[0],&app.cc[0],&app.dd[0],
+                           app.nz,app.nx_pad * app.ny, app.nx_pad * app.ny);
+    
     timing_end(app.prof, &timer2, &app.elapsed_time_z[0], app.elapsed_name[0]);
 
     // Communicate boundary values
@@ -814,7 +812,7 @@ int main(int argc, char* argv[]) {
 
     // Do the backward pass of modified Thomas
     timing_start(app.prof, &timer2);
-    if(INC) {
+    /*if(INC) {
       for(int y = 0; y < app.ny; y++) {
         int base = y * app.nx_pad;
         thomas_backwardInc_vec_strip(&app.aa[base],&app.cc[base],&app.dd[base], &app.h_u[base],
@@ -826,7 +824,16 @@ int main(int argc, char* argv[]) {
         thomas_backward_vec_strip(&app.aa[base],&app.cc[base],&app.dd[base], &app.h_u[base],
                             app.nz,app.nx_pad * app.ny, app.nx);
       }
+    }*/
+    
+    if(INC) {
+      thomas_backwardInc_vec_strip(&app.aa[0],&app.cc[0],&app.dd[0], &app.h_u[0],
+                                    app.nz,app.nx_pad * app.ny, app.nx_pad * app.ny);
+    } else {
+      thomas_backward_vec_strip(&app.aa[0],&app.cc[0],&app.dd[0], &app.h_u[0],
+                                  app.nz,app.nx_pad * app.ny, app.nx_pad * app.ny);
     }
+    
     timing_end(app.prof, &timer2, &app.elapsed_time_z[8], app.elapsed_name[8]);
 
     //MPI_Barrier(mpi.z_comm/*MPI_COMM_WORLD*/);
