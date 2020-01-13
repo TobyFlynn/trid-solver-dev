@@ -161,6 +161,12 @@ int init(app_handle &app, mpi_handle &mpi, int argc, char* argv[]) {
   int* periodic = (int*)calloc(3,sizeof(int));; //false
   int* coords = (int*)calloc(3,sizeof(int));
   MPI_Dims_create(mpi.procs, ndim, pdims);
+  
+  // Make z dim have the most MPI procs
+  int temp = pdims[2];
+  pdims[2] = pdims[0];
+  pdims[0] = temp;
+  
   printf("\nNumber of MPI procs in each dimenstion %d, %d, %d\n",pdims[0],pdims[1],pdims[2]);
 
   //create 3D cartecian ranks for group
