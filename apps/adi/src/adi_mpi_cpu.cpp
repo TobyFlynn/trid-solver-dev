@@ -713,7 +713,7 @@ int main(int argc, char* argv[]) {
     timing_start(app.prof, &timer);
     // Do the modified Thomas
     timing_start(app.prof, &timer2);
-     #pragma omp parallel for
+    #pragma omp parallel for
     for(int y = 0; y < app.ny; y++) {
       int base = y * app.nx_pad;
       thomas_forward_vec_strip(&app.az[base],&app.bz[base],&app.cz[base],&app.du[base],
