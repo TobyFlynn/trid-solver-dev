@@ -7,8 +7,8 @@ option(BUILD_FOR_GPU "Build library for GPU architecture." OFF)
 
 if (INTEL_CC) 
   # Detect/find Intel compilers
-  find_program(CMAKE_C_COMPILER NAMES   icc) 
-  find_program(CMAKE_CXX_COMPILER NAMES icpc) 
+  find_program(CMAKE_C_COMPILER NAMES   mpicc) 
+  find_program(CMAKE_CXX_COMPILER NAMES mpicxx) 
   find_program(CMAKE_AR NAMES           xiar) 
   find_program(CMAKE_LINKER NAMES       xild) 
 

@@ -62,7 +62,7 @@ struct tridS_handle {
   int *sys_len_l;
   int *n_sys_g;
   int *n_sys_l;
-}
+};
 
 struct tridD_handle {
   double *a;
@@ -91,7 +91,7 @@ struct tridD_handle {
   int *sys_len_l;
   int *n_sys_g;
   int *n_sys_l;
-}
+};
 
 struct trid_mpi_handle {
   int procs;
@@ -106,7 +106,7 @@ struct trid_mpi_handle {
   MPI_Comm x_comm;
   MPI_Comm y_comm;
   MPI_Comm z_comm;
-}
+};
 
 void tridSInit(tridS_handle &handle, trid_mpi_handle &mpi_handle, int ndim, int *size);
 
