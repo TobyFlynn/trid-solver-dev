@@ -37,9 +37,10 @@
 #include <string.h>
 #include <getopt.h>
 #include <float.h>
+#include <sys/time.h>
+
 #define FP double
 
-#include "adi_cpu.h"
 #include "adi_mpi.h"
 #include "preproc_mpi.hpp"
 #include "trid_mpi_cpu.h"
@@ -81,13 +82,32 @@ void print_help() {
   exit(0);
 }
 
-void rms(char* name, FP* array, app_handle &app, mpi_handle &mpi) {
+inline double elapsed_time(double *et) {
+  struct timeval t;
+  double old_time = *et;
+
+  gettimeofday( &t, (struct timezone *)0 );
+  *et = t.tv_sec + t.tv_usec*1.0e-6;
+
+  return *et - old_time;
+}
+
+inline void timing_start(double *timer) {
+  elapsed_time(timer);
+}
+
+inline void timing_end(double *timer, double *elapsed_accumulate) {
+  double elapsed = elapsed_time(timer);
+  *elapsed_accumulate += elapsed;
+}
+
+void rms(char* name, FP* array, trid_handle<FP> &handle, trid_mpi_handle &mpi_handle) {
   //Sum the square of values in app.h_u
   double sum = 0.0;
-  for(int k=0; k<app.nz; k++) {
-    for(int j=0; j<app.ny; j++) {
-      for(int i=0; i<app.nx; i++) {
-        int ind = k*app.nx_pad*app.ny + j*app.nx_pad + i;
+  for(int k = 0; k < handle.size[2]; k++) {
+    for(int j = 0; j < handle.size[1]; j++) {
+      for(int i = 0; i < handle.size[0]; i++) {
+        int ind = k * handle.pads[0] * handle.pads[1] + j * handle.pads[0] + i;
         //sum += array[ind]*array[ind];
         sum += array[ind];
       }
@@ -95,15 +115,15 @@ void rms(char* name, FP* array, app_handle &app, mpi_handle &mpi) {
   }
 
   double global_sum = 0.0;
-  MPI_Allreduce(&sum, &global_sum,1, MPI_DOUBLE,MPI_SUM, mpi.comm);
+  MPI_Allreduce(&sum, &global_sum,1, MPI_DOUBLE,MPI_SUM, mpi_handle.comm);
 
-  if(mpi.rank ==0) {
+  if(mpi_handle.rank ==0) {
     printf("%s sum = %lg\n", name, global_sum);
     //printf("%s rms = %2.15lg\n",name, sqrt(global_sum)/((double)(app.nx_g*app.ny_g*app.nz_g)));
   }
 
 }
-
+/*
 void print_array_onrank(int rank, FP* array, app_handle &app, mpi_handle &mpi) {
   if(mpi.rank == rank) {
     printf("On mpi rank %d\n",rank);
@@ -120,16 +140,16 @@ void print_array_onrank(int rank, FP* array, app_handle &app, mpi_handle &mpi) {
         printf("\n");
       }
   }
-}
+}*/
 
-int init(trid_handle<FP> &trid_handle, trid_mpi_handle &mpi_handle, preproc_handle<FP> &pre_handle, int argc, char* argv[]) {
+int init(trid_handle<FP> &trid_handle, trid_mpi_handle &mpi_handle, preproc_handle<FP> &pre_handle, int &iter, int argc, char* argv[]) {
   if( MPI_Init(&argc,&argv) != MPI_SUCCESS) { printf("MPI Couldn't initialize. Exiting"); exit(-1);}
 
   //int nx, ny, nz, iter, opt, prof;
   int nx_g = 256;
   int ny_g = 256;
   int nz_g = 256;
-  int iter = 10;
+  iter = 10;
   int opt  = 0;
   int prof = 1;
 
@@ -212,8 +232,10 @@ int main(int argc, char* argv[]) {
   trid_mpi_handle mpi_handle;
   trid_handle<FP> trid_handle;
   preproc_handle<FP> pre_handle;
-  int ret;
-  init(trid_handle, mpi_handle, pre_handle, argc, argv);
+  trid_timer trid_timing;
+  int iter;
+  const int INC = 1;
+  init(trid_handle, mpi_handle, pre_handle, iter, argc, argv);
 
   // Declare and reset elapsed time counters
   double timer           = 0.0;
@@ -226,303 +248,250 @@ int main(int argc, char* argv[]) {
   double elapsed_trid_y  = 0.0;
   double elapsed_trid_z  = 0.0;
 
-//#define TIMERS 11
-//  double elapsed_time[TIMERS];
-//  double   timers_min[TIMERS];
-//  double   timers_max[TIMERS];
-//  double   timers_avg[TIMERS];
-//  char   elapsed_name[TIMERS][256] = {"forward","halo1","alltoall1","halo2","reduced","halo3","alltoall2","halo4","backward","pre_mpi","pre_comp"};
-  /*strcpy(app.elapsed_name[ 0], "forward");
-  strcpy(app.elapsed_name[ 1], "halo1");
-  strcpy(app.elapsed_name[ 2], "gather");
-  strcpy(app.elapsed_name[ 3], "halo2");
-  strcpy(app.elapsed_name[ 4], "reduced");
-  strcpy(app.elapsed_name[ 5], "halo3");
-  strcpy(app.elapsed_name[ 6], "scatter");
-  strcpy(app.elapsed_name[ 7], "halo4");
-  strcpy(app.elapsed_name[ 8], "backward");
-  strcpy(app.elapsed_name[ 9], "pre_mpi");
-  strcpy(app.elapsed_name[10], "pre_comp");*/
-  double elapsed_forward   = 0.0;
-  double elapsed_reduced   = 0.0;
-  double elapsed_backward  = 0.0;
-  double elapsed_alltoall1 = 0.0;
-  double elapsed_alltoall2 = 0.0;
-  double elapsed_halo1     = 0.0;
-  double elapsed_halo2     = 0.0;
-  double elapsed_halo3     = 0.0;
-  double elapsed_halo4     = 0.0;
-
-  /*for(int i=0; i<TIMERS; i++) {
-    app.elapsed_time_x[i] = 0.0;
-    app.elapsed_time_y[i] = 0.0;
-    app.elapsed_time_z[i] = 0.0;
-    app.timers_min[i]   = DBL_MAX;
-    app.timers_avg[i]   = 0.0;
-    app.timers_max[i]   = 0.0;
-  }*/
-
-  // Warm up computation: result stored in h_tmp which is not used later
-  //preproc<FP>(lambda, h_tmp, h_du, h_ax, h_bx, h_cx, h_ay, h_by, h_cy, h_az, h_bz, h_cz, nx, nx_pad, ny, nz);
-
-  //int i, j, k, ind, it;
-  //
-  // calculate r.h.s. and set tri-diagonal coefficients
-  //
+  char elapsed_name[11][256] = {"forward","halo1","gather","halo2","reduced","halo3","scatter","halo4","backward","pre_mpi","pre_comp"};
   
-  //timing_start(app.prof, &timer1);
+  double timers_avg[11];
 
-  for(int it=0; it</*app.iter*/10; it++) {
+  for(int i = 0; i < 11; i++) {
+    trid_timing.elapsed_time_x[i] = 0.0;
+    trid_timing.elapsed_time_y[i] = 0.0;
+    trid_timing.elapsed_time_z[i] = 0.0;
+    timers_avg[i] = 0;
+  }
+  
+#define TIMED
 
-    MPI_Barrier(MPI_COMM_WORLD);
-    //timing_start(app.prof, &timer);
-        preproc_mpi<FP>(pre_handle, trid_handle.h_u, trid_handle.du, trid_handle.a,
-                    trid_handle.b, trid_handle.c, trid_handle, mpi_handle);
-        
-    printf("Preproc\n");
+  timing_start(&timer1);
+  
+  for(int it = 0; it < iter; it++) {
     
-    //timing_end(app.prof, &timer, &elapsed_preproc, "preproc");
+    timing_start(&timer);
+    
+    preproc_mpi<FP>(pre_handle, trid_handle.h_u, trid_handle.du, trid_handle.a,
+                    trid_handle.b, trid_handle.c, trid_handle, mpi_handle);
+    
+    timing_end(&timer, &elapsed_preproc);
 
     //
     // perform tri-diagonal solves in x-direction
     //
-    MPI_Barrier(MPI_COMM_WORLD);
-    //timing_start(app.prof, &timer);
+    timing_start(&timer);
     
-    tridBatch<FP, 1>(trid_handle, mpi_handle, 0);
-
-    printf("X\n");
+#ifdef TIMED
+    tridBatchTimed<FP, INC>(trid_handle, mpi_handle, trid_timing, 0);
+#else
+    tridBatch<FP, INC>(trid_handle, mpi_handle, 0);
+#endif
     
-    //timing_end(app.prof, &timer, &elapsed_trid_x, "trid-x");
-  
-    //rms("post x h_u", app.h_u, app, mpi);
-    //rms("post x du", app.du, app, mpi);
+    timing_end(&timer, &elapsed_trid_x);
 
     //
     // perform tri-diagonal solves in y-direction
     //
-    
-    //MPI_Barrier(MPI_COMM_WORLD);
-    //timing_start(app.prof, &timer);
+    timing_start(&timer);
 
-    tridBatch<FP, 1>(trid_handle, mpi_handle, 1);
+#ifdef TIMED
+    tridBatchTimed<FP, INC>(trid_handle, mpi_handle, trid_timing, 1);
+#else
+    tridBatch<FP, INC>(trid_handle, mpi_handle, 1);
+#endif
     
-    printf("Y\n");
-    
-    //timing_end(app.prof, &timer, &elapsed_trid_y, "trid-y");
-    
-    //rms("post y h_u", app.h_u, app, mpi);
-    //rms("post y du", app.du, app, mpi);
+    timing_end(&timer, &elapsed_trid_y);
     
     //
     // perform tri-diagonal solves in z-direction
     //
-    //MPI_Barrier(MPI_COMM_WORLD);
-    //timing_start(app.prof, &timer);
+    timing_start(&timer);
     
-    tridBatch<FP, 1>(trid_handle, mpi_handle, 2);
+#ifdef TIMED
+    tridBatchTimed<FP, INC>(trid_handle, mpi_handle, trid_timing, 2);
+#else
+    tridBatch<FP, INC>(trid_handle, mpi_handle, 2);
+#endif
     
-    printf("Z\n");
-    
-    //timing_end(app.prof, &timer, &elapsed_trid_z, "trid-z");
-    
-    //rms("post z h_u", app.h_u, app, mpi);
-    //rms("post z du", app.du, app, mpi);
+    timing_end(&timer, &elapsed_trid_z);
   }
   
-  //timing_end(app.prof, &timer1, &elapsed_total, "total");
+  timing_end(&timer1, &elapsed_total);
   
-  //rms("end h_u", app.h_u, app, mpi);
-  //rms("end du", app.du, app, mpi);
-
-/*{
-  int nx = app.nx;
-  int ny = app.ny;
-  int nz = app.nz;
-  int ldim = app.nx_pad;
-  FP *h_u = app.h_u;
-  //h_u = du;
-  for(int r=0; r<mpi.procs; r++) {
-    MPI_Barrier(MPI_COMM_WORLD);
-    if(r==mpi.rank) {
-      printf("Data on rank = %d +++++++++++++++++++++++\n", mpi.rank);
-      #include "print_array.c"
-    }
-  }
-}*/
-  // Normalize timers to one iteration
-  /*for(int i=0; i<TIMERS; i++) {
-    app.elapsed_time_x[i] /= app.iter;
-    app.elapsed_time_y[i] /= app.iter;
-    app.elapsed_time_z[i] /= app.iter;
-  }*/
+  rms("end h_u", trid_handle.h_u, trid_handle, mpi_handle);
+  rms("end du", trid_handle.du, trid_handle, mpi_handle);
 
   MPI_Barrier(MPI_COMM_WORLD);
-  /*MPI_Reduce(app.elapsed_time,app.timers_min,TIMERS,MPI_DOUBLE,MPI_MIN,0,MPI_COMM_WORLD);
-  MPI_Reduce(app.elapsed_time,app.timers_max,TIMERS,MPI_DOUBLE,MPI_MAX,0,MPI_COMM_WORLD);
-  MPI_Reduce(app.elapsed_time,app.timers_avg,TIMERS,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
-  for(int i=0; i<TIMERS; i++)
-    app.timers_avg[i] /= mpi.procs;*/
   
-  /*double avg_total = 0.0;
+  double avg_total = 0.0;
 
-  MPI_Reduce(app.elapsed_time_x,app.timers_avg,TIMERS,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
-  MPI_Reduce(&elapsed_trid_x,&avg_total,1,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
+  MPI_Reduce(trid_timing.elapsed_time_x, timers_avg, 11, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+  MPI_Reduce(&elapsed_trid_x, &avg_total, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   
-  if(mpi.rank == 0) {
-    for(int i=0; i<TIMERS; i++)
-        app.timers_avg[i] /= mpi.procs;
+  if(mpi_handle.rank == 0) {
+    for(int i=0; i<11; i++)
+        timers_avg[i] /= mpi_handle.procs;
     
-    avg_total /= mpi.procs;
+    avg_total /= mpi_handle.procs;
   }
   
-  for(int i=0; i<mpi.procs; i++) {
+  /*for(int i=0; i<mpi_handle.procs; i++) {
     MPI_Barrier(MPI_COMM_WORLD);
     //sleep(0.2);
-    if(i==mpi.rank) {
-      if(mpi.rank==0) {
+    if(i==mpi_handle.rank) {
+      if(mpi_handle.rank==0) {
         printf("Time in trid-x segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[checksum]\n",
-            app.elapsed_name[0], app.elapsed_name[1], app.elapsed_name[2], app.elapsed_name[3], app.elapsed_name[4], app.elapsed_name[5], app.elapsed_name[6], app.elapsed_name[7], app.elapsed_name[8]);
+            elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4], elapsed_name[5], elapsed_name[6], elapsed_name[7], elapsed_name[8]);
       }
       printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
       1000.0*elapsed_trid_x ,
-      1000.0*app.elapsed_time_x[0],
-      1000.0*app.elapsed_time_x[1],
-      1000.0*app.elapsed_time_x[2],
-      1000.0*app.elapsed_time_x[3],
-      1000.0*app.elapsed_time_x[4],
-      1000.0*app.elapsed_time_x[5],
-      1000.0*app.elapsed_time_x[6],
-      1000.0*app.elapsed_time_x[7],
-      1000.0*app.elapsed_time_x[8],
-      1000.0*(app.elapsed_time_x[0] + app.elapsed_time_x[1] + app.elapsed_time_x[2] + app.elapsed_time_x[3] + app.elapsed_time_x[4] + app.elapsed_time_x[5] + app.elapsed_time_x[6] + app.elapsed_time_x[7] + app.elapsed_time_x[8]));
+      1000.0*trid_timing.elapsed_time_x[0],
+      1000.0*trid_timing.elapsed_time_x[1],
+      1000.0*trid_timing.elapsed_time_x[2],
+      1000.0*trid_timing.elapsed_time_x[3],
+      1000.0*trid_timing.elapsed_time_x[4],
+      1000.0*trid_timing.elapsed_time_x[5],
+      1000.0*trid_timing.elapsed_time_x[6],
+      1000.0*trid_timing.elapsed_time_x[7],
+      1000.0*trid_timing.elapsed_time_x[8],
+      1000.0*(trid_timing.elapsed_time_x[0] + trid_timing.elapsed_time_x[1] + trid_timing.elapsed_time_x[2] + trid_timing.elapsed_time_x[3] 
+              + trid_timing.elapsed_time_x[4] + trid_timing.elapsed_time_x[5] + trid_timing.elapsed_time_x[6] + trid_timing.elapsed_time_x[7]
+              + trid_timing.elapsed_time_x[8]));
     }
-  }
+  }*/
   
   MPI_Barrier(MPI_COMM_WORLD);
-  if(mpi.rank == 0) {
-    printf("Avg:\n");
+  if(mpi_handle.rank == 0) {
+    printf("Average time in trid-x segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s]\n",
+            elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4], elapsed_name[5], elapsed_name[6], elapsed_name[7], elapsed_name[8]);
     printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
         1000.0*avg_total ,
-        1000.0*app.timers_avg[0],
-        1000.0*app.timers_avg[1],
-        1000.0*app.timers_avg[2],
-        1000.0*app.timers_avg[3],
-        1000.0*app.timers_avg[4],
-        1000.0*app.timers_avg[5],
-        1000.0*app.timers_avg[6],
-        1000.0*app.timers_avg[7],
-        1000.0*app.timers_avg[8]);
+        1000.0*timers_avg[0],
+        1000.0*timers_avg[1],
+        1000.0*timers_avg[2],
+        1000.0*timers_avg[3],
+        1000.0*timers_avg[4],
+        1000.0*timers_avg[5],
+        1000.0*timers_avg[6],
+        1000.0*timers_avg[7],
+        1000.0*timers_avg[8]);
   }
+  
+  for(int i = 0; i < 11; i++) {
+    timers_avg[i] = 0;
+  }
+  
   MPI_Barrier(MPI_COMM_WORLD);
   
-  MPI_Reduce(app.elapsed_time_y,app.timers_avg,TIMERS,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
-  MPI_Reduce(&elapsed_trid_y,&avg_total,1,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
+  MPI_Reduce(trid_timing.elapsed_time_y, timers_avg, 11, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+  MPI_Reduce(&elapsed_trid_y, &avg_total, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   
-  if(mpi.rank == 0) {
-    for(int i=0; i<TIMERS; i++)
-        app.timers_avg[i] /= mpi.procs;
+  if(mpi_handle.rank == 0) {
+    for(int i=0; i<11; i++)
+        timers_avg[i] /= mpi_handle.procs;
     
-    avg_total /= mpi.procs;
+    avg_total /= mpi_handle.procs;
   }
   
-  for(int i=0; i<mpi.procs; i++) {
+  /*for(int i=0; i<mpi_handle.procs; i++) {
     MPI_Barrier(MPI_COMM_WORLD);
     //sleep(0.2);
-    if(i==mpi.rank) {
-      if(mpi.rank==0) {
+    if(i==mpi_handle.rank) {
+      if(mpi_handle.rank==0) {
         printf("Time in trid-y segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[checksum]\n",
-            app.elapsed_name[0], app.elapsed_name[1], app.elapsed_name[2], app.elapsed_name[3], app.elapsed_name[4], app.elapsed_name[5], app.elapsed_name[6], app.elapsed_name[7], app.elapsed_name[8]);
+            elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4], elapsed_name[5], elapsed_name[6], elapsed_name[7], elapsed_name[8]);
       }
       printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
       1000.0*elapsed_trid_y ,
-      1000.0*app.elapsed_time_y[0],
-      1000.0*app.elapsed_time_y[1],
-      1000.0*app.elapsed_time_y[2],
-      1000.0*app.elapsed_time_y[3],
-      1000.0*app.elapsed_time_y[4],
-      1000.0*app.elapsed_time_y[5],
-      1000.0*app.elapsed_time_y[6],
-      1000.0*app.elapsed_time_y[7],
-      1000.0*app.elapsed_time_y[8],
-      1000.0*(app.elapsed_time_y[0] + app.elapsed_time_y[1] + app.elapsed_time_y[2] + app.elapsed_time_y[3] + app.elapsed_time_y[4] + app.elapsed_time_y[5] + app.elapsed_time_y[6] + app.elapsed_time_y[7] + app.elapsed_time_y[8]));
+      1000.0*trid_timing.elapsed_time_y[0],
+      1000.0*trid_timing.elapsed_time_y[1],
+      1000.0*trid_timing.elapsed_time_y[2],
+      1000.0*trid_timing.elapsed_time_y[3],
+      1000.0*trid_timing.elapsed_time_y[4],
+      1000.0*trid_timing.elapsed_time_y[5],
+      1000.0*trid_timing.elapsed_time_y[6],
+      1000.0*trid_timing.elapsed_time_y[7],
+      1000.0*trid_timing.elapsed_time_y[8],
+      1000.0*(trid_timing.elapsed_time_y[0] + trid_timing.elapsed_time_y[1] + trid_timing.elapsed_time_y[2] + trid_timing.elapsed_time_y[3] 
+              + trid_timing.elapsed_time_y[4] + trid_timing.elapsed_time_y[5] + trid_timing.elapsed_time_y[6] + trid_timing.elapsed_time_y[7] 
+              + trid_timing.elapsed_time_y[8]));
     }
-  }
+  }*/
   
   MPI_Barrier(MPI_COMM_WORLD);
-  if(mpi.rank == 0) {
-    printf("Avg:\n");
+  if(mpi_handle.rank == 0) {
+    printf("Average time in trid-y segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s]\n",
+            elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4], elapsed_name[5], elapsed_name[6], elapsed_name[7], elapsed_name[8]);
     printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
         1000.0*avg_total ,
-        1000.0*app.timers_avg[0],
-        1000.0*app.timers_avg[1],
-        1000.0*app.timers_avg[2],
-        1000.0*app.timers_avg[3],
-        1000.0*app.timers_avg[4],
-        1000.0*app.timers_avg[5],
-        1000.0*app.timers_avg[6],
-        1000.0*app.timers_avg[7],
-        1000.0*app.timers_avg[8]);
+        1000.0*timers_avg[0],
+        1000.0*timers_avg[1],
+        1000.0*timers_avg[2],
+        1000.0*timers_avg[3],
+        1000.0*timers_avg[4],
+        1000.0*timers_avg[5],
+        1000.0*timers_avg[6],
+        1000.0*timers_avg[7],
+        1000.0*timers_avg[8]);
   }
+  
+  for(int i = 0; i < 11; i++) {
+    timers_avg[i] = 0;
+  }
+  
   MPI_Barrier(MPI_COMM_WORLD);
   
-  MPI_Reduce(app.elapsed_time_z,app.timers_avg,TIMERS,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
-  MPI_Reduce(&elapsed_trid_z,&avg_total,1,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
+  MPI_Reduce(trid_timing.elapsed_time_z, timers_avg, 11, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+  MPI_Reduce(&elapsed_trid_z, &avg_total, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   
-  if(mpi.rank == 0) {
-    for(int i=0; i<TIMERS; i++)
-        app.timers_avg[i] /= mpi.procs;
+  if(mpi_handle.rank == 0) {
+    for(int i=0; i<11; i++)
+        timers_avg[i] /= mpi_handle.procs;
     
-    avg_total /= mpi.procs;
+    avg_total /= mpi_handle.procs;
   }
   
-  for(int i=0; i<mpi.procs; i++) {
+  /*for(int i=0; i<mpi_handle.procs; i++) {
     MPI_Barrier(MPI_COMM_WORLD);
     //sleep(0.2);
-    if(i==mpi.rank) {
-      if(mpi.rank==0) {
+    if(i==mpi_handle.rank) {
+      if(mpi_handle.rank==0) {
         printf("Time in trid-z segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[checksum]\n",
-            app.elapsed_name[0], app.elapsed_name[1], app.elapsed_name[2], app.elapsed_name[3], app.elapsed_name[4], app.elapsed_name[5], app.elapsed_name[6], app.elapsed_name[7], app.elapsed_name[8]);
+            elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4], elapsed_name[5], elapsed_name[6], elapsed_name[7], elapsed_name[8]);
       }
       printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
       1000.0*elapsed_trid_z ,
-      1000.0*app.elapsed_time_z[0],
-      1000.0*app.elapsed_time_z[1],
-      1000.0*app.elapsed_time_z[2],
-      1000.0*app.elapsed_time_z[3],
-      1000.0*app.elapsed_time_z[4],
-      1000.0*app.elapsed_time_z[5],
-      1000.0*app.elapsed_time_z[6],
-      1000.0*app.elapsed_time_z[7],
-      1000.0*app.elapsed_time_z[8],
-      1000.0*(app.elapsed_time_z[0] + app.elapsed_time_z[1] + app.elapsed_time_z[2] + app.elapsed_time_z[3] + app.elapsed_time_z[4] + app.elapsed_time_z[5] + app.elapsed_time_z[6] + app.elapsed_time_z[7] + app.elapsed_time_z[8]));
+      1000.0*trid_timing.elapsed_time_z[0],
+      1000.0*trid_timing.elapsed_time_z[1],
+      1000.0*trid_timing.elapsed_time_z[2],
+      1000.0*trid_timing.elapsed_time_z[3],
+      1000.0*trid_timing.elapsed_time_z[4],
+      1000.0*trid_timing.elapsed_time_z[5],
+      1000.0*trid_timing.elapsed_time_z[6],
+      1000.0*trid_timing.elapsed_time_z[7],
+      1000.0*trid_timing.elapsed_time_z[8],
+      1000.0*(trid_timing.elapsed_time_z[0] + trid_timing.elapsed_time_z[1] + trid_timing.elapsed_time_z[2] + trid_timing.elapsed_time_z[3] 
+              + trid_timing.elapsed_time_z[4] + trid_timing.elapsed_time_z[5] + trid_timing.elapsed_time_z[6] + trid_timing.elapsed_time_z[7] 
+              + trid_timing.elapsed_time_z[8]));
     }
-  }
+  }*/
   
   MPI_Barrier(MPI_COMM_WORLD);
-  if(mpi.rank == 0) {
-    printf("Avg:\n");
+  if(mpi_handle.rank == 0) {
+    printf("Average time in trid-z segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s]\n",
+            elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4], elapsed_name[5], elapsed_name[6], elapsed_name[7], elapsed_name[8]);
     printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
         1000.0*avg_total ,
-        1000.0*app.timers_avg[0],
-        1000.0*app.timers_avg[1],
-        1000.0*app.timers_avg[2],
-        1000.0*app.timers_avg[3],
-        1000.0*app.timers_avg[4],
-        1000.0*app.timers_avg[5],
-        1000.0*app.timers_avg[6],
-        1000.0*app.timers_avg[7],
-        1000.0*app.timers_avg[8]);
+        1000.0*timers_avg[0],
+        1000.0*timers_avg[1],
+        1000.0*timers_avg[2],
+        1000.0*timers_avg[3],
+        1000.0*timers_avg[4],
+        1000.0*timers_avg[5],
+        1000.0*timers_avg[6],
+        1000.0*timers_avg[7],
+        1000.0*timers_avg[8]);
   }
   
   MPI_Barrier(MPI_COMM_WORLD);
-  if(mpi.rank == 0) {
+  if(mpi_handle.rank == 0) {
     // Print execution times
-    if(app.prof == 0) {
-      printf("Avg(per iter) \n[total]\n");
-      printf("%f\n", elapsed_total/app.iter);
-    }
-    else if(app.prof == 1) {
     printf("Time per section: \n[total] \t[prepro] \t[trid_x] \t[trid_y] \t[trid_z]\n");
     printf("%e \t%e \t%e \t%e \t%e\n",
         elapsed_total,
@@ -530,16 +499,15 @@ int main(int argc, char* argv[]) {
         elapsed_trid_x,
         elapsed_trid_y,
         elapsed_trid_z);
-    printf("Time per element averaged on %d iterations: \n[total] \t[prepro] \t[trid_x] \t[trid_y] \t[trid_z]\n", app.iter);
+    printf("Time per element averaged on %d iterations: \n[total] \t[prepro] \t[trid_x] \t[trid_y] \t[trid_z]\n", iter);
     printf("%e \t%e \t%e \t%e \t%e\n",
-        (elapsed_total/app.iter  ) / (app.nx_g * app.ny_g * app.nz_g),
-        (elapsed_preproc/app.iter) / (app.nx_g * app.ny_g * app.nz_g),
-        (elapsed_trid_x/app.iter ) / (app.nx_g * app.ny_g * app.nz_g),
-        (elapsed_trid_y/app.iter ) / (app.nx_g * app.ny_g * app.nz_g),
-        (elapsed_trid_z/app.iter ) / (app.nx_g * app.ny_g * app.nz_g));
-    }
+        (elapsed_total/iter  ) / (trid_handle.size_g[0] * trid_handle.size_g[1] * trid_handle.size_g[2]),
+        (elapsed_preproc/iter) / (trid_handle.size_g[0] * trid_handle.size_g[1] * trid_handle.size_g[2]),
+        (elapsed_trid_x/iter ) / (trid_handle.size_g[0] * trid_handle.size_g[1] * trid_handle.size_g[2]),
+        (elapsed_trid_y/iter ) / (trid_handle.size_g[0] * trid_handle.size_g[1] * trid_handle.size_g[2]),
+        (elapsed_trid_z/iter ) / (trid_handle.size_g[0] * trid_handle.size_g[1] * trid_handle.size_g[2]));
   }
-  finalize(app, mpi);*/
+  MPI_Barrier(MPI_COMM_WORLD);
   
   finalize(trid_handle, mpi_handle, pre_handle);
   

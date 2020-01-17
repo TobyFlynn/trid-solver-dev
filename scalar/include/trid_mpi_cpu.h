@@ -80,6 +80,13 @@ struct trid_mpi_handle {
   MPI_Comm z_comm;
 };
 
+struct trid_timer {
+  double timer;
+  double elapsed_time_x[11];
+  double elapsed_time_y[11];
+  double elapsed_time_z[11];
+};
+
 template<typename REAL>
 void tridInit(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int ndim, int *size);
 
@@ -88,5 +95,9 @@ void tridClean(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle);
 
 template<typename REAL, int INC>
 void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solveDim);
+
+template<typename REAL, int INC>
+void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, 
+                    trid_timer &timer_handle, int solveDim);
 
 #endif

@@ -6,10 +6,30 @@
 #include "omp.h"
 
 #include <type_traits>
+#include <sys/time.h>
 
 #define ROUND_DOWN(N,step) (((N)/(step))*step)
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
+
+inline double elapsed_time(double *et) {
+  struct timeval t;
+  double old_time = *et;
+
+  gettimeofday( &t, (struct timezone *)0 );
+  *et = t.tv_sec + t.tv_usec*1.0e-6;
+
+  return *et - old_time;
+}
+
+inline void timing_start(double *timer) {
+  elapsed_time(timer);
+}
+
+inline void timing_end(double *timer, double *elapsed_accumulate) {
+  double elapsed = elapsed_time(timer);
+  *elapsed_accumulate += elapsed;
+}
 
 template<typename REAL>
 void tridInit(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int ndim, int *size) {
@@ -514,6 +534,424 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
   }
 }
 
+template<typename REAL, int INC>
+void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, 
+                    trid_timer &timer_handle, int solveDim) {
+  if(solveDim == 0) {
+    /*********************
+     * 
+     * X Dimension Solve
+     * 
+     *********************/
+    
+    timing_start(&timer_handle.timer);
+    
+    // Do modified thomas forward pass
+    #pragma omp parallel for
+    for(int id = 0; id < handle.n_sys_g[0]; id++) {
+      int base = id * handle.pads[0];
+      thomas_forward<REAL>(&handle.a[base], &handle.b[base], &handle.c[base], &handle.du[base],
+                     &handle.h_u[base], &handle.aa[base], &handle.cc[base],
+                     &handle.dd[base], handle.size[0], 1);
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[0]);
+    
+    // Pack boundary values
+    #pragma omp parallel for
+    for(int id = 0; id < handle.n_sys_g[0]; id++) {
+      // Gather coefficients of a,c,d
+      int halo_base = id * 6;
+      int data_base = id * handle.pads[0];
+      handle.halo_sndbuf[halo_base]     = handle.aa[data_base];
+      handle.halo_sndbuf[halo_base + 1] = handle.aa[data_base + handle.size[0]-1];
+      handle.halo_sndbuf[halo_base + 2] = handle.cc[data_base];
+      handle.halo_sndbuf[halo_base + 3] = handle.cc[data_base + handle.size[0]-1];
+      handle.halo_sndbuf[halo_base + 4] = handle.dd[data_base];
+      handle.halo_sndbuf[halo_base + 5] = handle.dd[data_base + handle.size[0]-1];
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[1]);
+    
+    // Communicate boundary values
+    if(std::is_same<REAL, float>::value) {
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[0]*3*2, MPI_FLOAT, handle.halo_rcvbuf,
+               handle.n_sys_l[0]*3*2, MPI_FLOAT, 0, mpi_handle.x_comm);
+    } else {
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[0]*3*2, MPI_DOUBLE, handle.halo_rcvbuf,
+               handle.n_sys_l[0]*3*2, MPI_DOUBLE, 0, mpi_handle.x_comm);
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[2]);
+    
+    // Unpack boundary values
+    if(mpi_handle.coords[0] == 0) {
+      #pragma omp parallel for collapse(2)
+      for(int p = 0; p < mpi_handle.pdims[0]; p++) {
+        for(int id = 0; id < handle.n_sys_l[0]; id++) {
+          int halo_base = p * handle.n_sys_l[0] * 6 + id * 6;
+          int data_base = id * handle.sys_len_l[0] + p * 2;
+          handle.aa_r[data_base]     = handle.halo_rcvbuf[halo_base];
+          handle.aa_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 1];
+          handle.cc_r[data_base]     = handle.halo_rcvbuf[halo_base + 2];
+          handle.cc_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 3];
+          handle.dd_r[data_base]     = handle.halo_rcvbuf[halo_base + 4];
+          handle.dd_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 5];
+        }
+      }
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[3]);
+    
+    // Compute reduced system
+    if(mpi_handle.coords[0] == 0) {
+      #pragma omp parallel for
+      for(int id = 0; id < handle.n_sys_l[0]; id++) {
+        int base = id * handle.sys_len_l[0];
+        thomas_on_reduced<REAL>(&handle.aa_r[base], &handle.cc_r[base], &handle.dd_r[base],
+                          handle.sys_len_l[0], 1);
+      }
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[4]);
+    
+    // Pack boundary solution data
+    if(mpi_handle.coords[0] == 0) {
+      #pragma omp parallel for
+      for(int p = 0; p < mpi_handle.pdims[0]; p++) {
+        for(int id = 0; id < handle.n_sys_l[0]; id++) {
+          int halo_base = p * handle.n_sys_l[0] * 2 + id * 2;
+          int data_base = id * handle.sys_len_l[0] + p * 2;
+          handle.halo_rcvbuf[halo_base]     = handle.dd_r[data_base];
+          handle.halo_rcvbuf[halo_base + 1] = handle.dd_r[data_base + 1];
+        }
+      }
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[5]);
+    
+    // Send back new values
+    if(std::is_same<REAL, float>::value) {
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[0] * 2, MPI_FLOAT, handle.halo_sndbuf,
+                handle.n_sys_l[0] * 2, MPI_FLOAT, 0, mpi_handle.x_comm);
+    } else {
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[0] * 2, MPI_DOUBLE, handle.halo_sndbuf,
+                handle.n_sys_l[0] * 2, MPI_DOUBLE, 0, mpi_handle.x_comm);
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[6]);
+    
+    // Unpack boundary solution
+    #pragma omp parallel for
+    for(int id = 0; id < handle.n_sys_g[0]; id++) {
+      // Gather coefficients of a,c,d
+      int data_base = id * handle.pads[0];
+      int halo_base = id * 2;
+      handle.dd[data_base]                    = handle.halo_sndbuf[halo_base];
+      handle.dd[data_base + handle.size[0]-1] = handle.halo_sndbuf[halo_base + 1];
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[7]);
+    
+    // Do the backward pass of modified Thomas
+    if(INC) {
+      #pragma omp parallel for
+      for(int id = 0; id < handle.n_sys_g[0]; id++) {
+        int ind = id * handle.pads[0];
+        thomas_backwardInc<REAL>(&handle.aa[ind], &handle.cc[ind], &handle.dd[ind], 
+                        &handle.h_u[ind], handle.size[0], 1);
+      }
+    } else {
+      #pragma omp parallel for
+      for(int id = 0; id < handle.n_sys_g[0]; id++) {
+        int ind = id * handle.pads[0];
+        thomas_backward<REAL>(&handle.aa[ind], &handle.cc[ind], &handle.dd[ind], 
+                        &handle.h_u[ind], handle.size[0], 1);
+      }
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[8]);
+    
+  } else if(solveDim == 1) {
+    /*********************
+     * 
+     * Y Dimension Solve
+     * 
+     *********************/
+    
+    timing_start(&timer_handle.timer);
+    
+    // Do modified thomas forward pass
+    #pragma omp parallel for
+    for(int z = 0; z < handle.size[2]; z++) {
+      int base = z * handle.pads[0] * handle.pads[1];
+      thomas_forward_vec_strip<REAL>(&handle.a[base], &handle.b[base], &handle.c[base],
+                               &handle.du[base], &handle.h_u[base], &handle.aa[base],
+                               &handle.cc[base], &handle.dd[base], handle.size[1],
+                               handle.pads[0], handle.size[0]);
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[0]);
+    
+    // Pack boundary values
+    #pragma omp parallel for
+    for(int id = 0; id < handle.n_sys_g[1]; id++) {
+      int start = (id/handle.size[0]) * handle.pads[0] * handle.pads[1] + (id % handle.size[0]);
+      int end = start + (handle.pads[0] * (handle.size[1] - 1));
+      int halo_base = id * 6;
+      // Gather coefficients of a,c,d
+      handle.halo_sndbuf[halo_base]     = handle.aa[start];
+      handle.halo_sndbuf[halo_base + 1] = handle.aa[end];
+      handle.halo_sndbuf[halo_base + 2] = handle.cc[start];
+      handle.halo_sndbuf[halo_base + 3] = handle.cc[end];
+      handle.halo_sndbuf[halo_base + 4] = handle.dd[start];
+      handle.halo_sndbuf[halo_base + 5] = handle.dd[end];
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[1]);
+    
+    // Communicate boundary values
+    if(std::is_same<REAL, float>::value) {
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[1]*3*2, MPI_FLOAT, handle.halo_rcvbuf,
+               handle.n_sys_l[1]*3*2, MPI_FLOAT, 0, mpi_handle.y_comm);
+    } else {
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[1]*3*2, MPI_DOUBLE, handle.halo_rcvbuf,
+               handle.n_sys_l[1]*3*2, MPI_DOUBLE, 0, mpi_handle.y_comm);
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[2]);
+    
+    // Unpack boundary values
+    if(mpi_handle.coords[1] == 0) {
+      #pragma omp parallel for collapse(2)
+      for(int p = 0; p < mpi_handle.pdims[1]; p++) {
+        for(int id = 0; id < handle.n_sys_l[1]; id++) {
+          int halo_base = p * handle.n_sys_l[1] * 6 + id * 6;
+          int data_base = id * handle.sys_len_l[1] + p * 2;
+          handle.aa_r[data_base]     = handle.halo_rcvbuf[halo_base];
+          handle.aa_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 1];
+          handle.cc_r[data_base]     = handle.halo_rcvbuf[halo_base + 2];
+          handle.cc_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 3];
+          handle.dd_r[data_base]     = handle.halo_rcvbuf[halo_base + 4];
+          handle.dd_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 5];
+        }
+      }
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[3]);
+    
+    // Compute reduced system
+    if(mpi_handle.coords[1] == 0) {
+      #pragma omp parallel for
+      for(int id = 0; id < handle.n_sys_l[1]; id++) {
+        int base = id * handle.sys_len_l[1];
+        thomas_on_reduced<REAL>(&handle.aa_r[base], &handle.cc_r[base], &handle.dd_r[base],
+                                 handle.sys_len_l[1], 1);
+      }
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[4]);
+    
+    // Pack boundary solution data
+    if(mpi_handle.coords[1] == 0) {
+      #pragma omp parallel for
+      for(int p = 0; p < mpi_handle.pdims[1]; p++) {
+        for(int id = 0; id < handle.n_sys_l[1]; id++) {
+          int halo_base = p * handle.n_sys_l[1] * 2 + id * 2;
+          int data_base = id * handle.sys_len_l[1] + p * 2;
+          handle.halo_rcvbuf[halo_base]     = handle.dd_r[data_base];
+          handle.halo_rcvbuf[halo_base + 1] = handle.dd_r[data_base + 1];
+        }
+      }
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[5]);
+    
+    // Send back new values
+    if(std::is_same<REAL, float>::value) {
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[1]*2, MPI_FLOAT, handle.halo_sndbuf,
+                handle.n_sys_l[1]*2, MPI_FLOAT, 0, mpi_handle.y_comm);
+    } else {
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[1]*2, MPI_DOUBLE, handle.halo_sndbuf,
+                handle.n_sys_l[1]*2, MPI_DOUBLE, 0, mpi_handle.y_comm);
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[6]);
+    
+    // Unpack boundary solution
+    #pragma omp parallel for
+    for(int id = 0; id < handle.n_sys_g[1]; id++) {
+      int start = (id/handle.size[0]) * handle.pads[0] * handle.pads[1] + (id % handle.size[0]);
+      int end = start + (handle.pads[0] * (handle.size[1] - 1));
+      int halo_base = id * 2;
+      handle.dd[start] = handle.halo_sndbuf[halo_base];
+      handle.dd[end]   = handle.halo_sndbuf[halo_base + 1];
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[7]);
+    
+    // Do the backward pass of modified Thomas
+    if(INC) {
+      #pragma omp parallel for
+      for(int z = 0; z < handle.size[2]; z++) {
+        int base = z * handle.pads[0] * handle.pads[1];
+        thomas_backwardInc_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
+                                        &handle.h_u[base], handle.size[1], handle.pads[0],
+                                        handle.size[0]);
+      }
+    } else {
+      #pragma omp parallel for
+      for(int z = 0; z < handle.size[2]; z++) {
+        int base = z * handle.pads[0] * handle.pads[1];
+        thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
+                                        &handle.h_u[base], handle.size[1], handle.pads[0],
+                                        handle.size[0]);
+      }
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[8]);
+    
+  } else {
+    /*********************
+     * 
+     * Z Dimension Solve
+     * 
+     *********************/
+    
+    timing_start(&timer_handle.timer);
+    
+    // Do modified thomas forward pass
+    #pragma omp parallel for
+    for(int y = 0; y < handle.size[1]; y++) {
+      int base = y * handle.pads[0];
+      thomas_forward_vec_strip<REAL>(&handle.a[base], &handle.b[base], &handle.c[base],
+                               &handle.du[base], &handle.h_u[base], &handle.aa[base],
+                               &handle.cc[base], &handle.dd[base], handle.size[2],
+                               handle.pads[0] * handle.pads[1], handle.size[0]);
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[0]);
+    
+    // Pack boundary values
+    #pragma omp parallel for
+    for(int id = 0; id < handle.n_sys_g[2]; id++) {
+      int start = (id/handle.size[0]) * handle.pads[0] + (id % handle.size[0]);
+      int end = start + (handle.pads[0] * handle.pads[1] * (handle.size[2] - 1));
+      int halo_base = id * 6;
+      // Gather coefficients of a,c,d
+      handle.halo_sndbuf[halo_base]     = handle.aa[start];
+      handle.halo_sndbuf[halo_base + 1] = handle.aa[end];
+      handle.halo_sndbuf[halo_base + 2] = handle.cc[start];
+      handle.halo_sndbuf[halo_base + 3] = handle.cc[end];
+      handle.halo_sndbuf[halo_base + 4] = handle.dd[start];
+      handle.halo_sndbuf[halo_base + 5] = handle.dd[end];
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[1]);
+    
+    // Communicate boundary values
+    if(std::is_same<REAL, float>::value) {
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[2]*3*2, MPI_FLOAT, handle.halo_rcvbuf,
+               handle.n_sys_l[2]*3*2, MPI_FLOAT, 0, mpi_handle.z_comm);
+    } else {
+      MPI_Gather(handle.halo_sndbuf, handle.n_sys_l[2]*3*2, MPI_DOUBLE, handle.halo_rcvbuf,
+               handle.n_sys_l[2]*3*2, MPI_DOUBLE, 0, mpi_handle.z_comm);
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[2]);
+    
+    // Unpack boundary data
+    if(mpi_handle.coords[2] == 0) {
+      #pragma omp parallel for collapse(2)
+      for(int p = 0; p < mpi_handle.pdims[2]; p++) {
+        for(int id = 0; id < handle.n_sys_l[2]; id++) {
+          int data_base = id * handle.sys_len_l[2] + p * 2;
+          int halo_base = p * handle.n_sys_l[2] * 6 + id * 6;
+          handle.aa_r[data_base]     = handle.halo_rcvbuf[halo_base];
+          handle.aa_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 1];
+          handle.cc_r[data_base]     = handle.halo_rcvbuf[halo_base + 2];
+          handle.cc_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 3];
+          handle.dd_r[data_base]     = handle.halo_rcvbuf[halo_base + 4];
+          handle.dd_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 5];
+        }
+      }
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[3]);
+    
+    // Compute reduced system
+    if(mpi_handle.coords[2] == 0) {
+      #pragma omp parallel for
+      for(int id = 0; id < handle.n_sys_l[2]; id++) {
+        int base = id * handle.sys_len_l[2];
+        thomas_on_reduced<REAL>(&handle.aa_r[base], &handle.cc_r[base], &handle.dd_r[base],
+                                 handle.sys_len_l[2], 1);
+      }
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[4]);
+    
+    // Pack boundary solution data
+    if(mpi_handle.coords[2] == 0) {
+      #pragma omp parallel for
+      for(int p = 0; p < mpi_handle.pdims[2]; p++) {
+        for(int id = 0; id < handle.n_sys_l[2]; id++) {
+          int halo_base = p * handle.n_sys_l[2] * 2 + id * 2;
+          int data_base = id * handle.sys_len_l[2] + p * 2;
+          handle.halo_rcvbuf[halo_base]     = handle.dd_r[data_base];
+          handle.halo_rcvbuf[halo_base + 1] = handle.dd_r[data_base + 1];
+        }
+      }
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[5]);
+    
+    // Send back new values
+    if(std::is_same<REAL, float>::value) {
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[2]*2, MPI_FLOAT, handle.halo_sndbuf,
+                handle.n_sys_l[2]*2, MPI_FLOAT, 0, mpi_handle.z_comm);
+    } else {
+      MPI_Scatter(handle.halo_rcvbuf, handle.n_sys_l[2]*2, MPI_DOUBLE, handle.halo_sndbuf,
+                handle.n_sys_l[2]*2, MPI_DOUBLE, 0, mpi_handle.z_comm);
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[6]);
+    
+    // Unpack boundary solution
+    #pragma omp parallel for
+    for(int id = 0; id < handle.n_sys_g[2]; id++) {
+      int start = (id/handle.size[0]) * handle.pads[0] + (id % handle.size[0]);
+      int end = start + (handle.pads[0] * handle.pads[1] * (handle.size[2] - 1));
+      int halo_base = id * 2;
+      handle.dd[start] = handle.halo_sndbuf[halo_base];
+      handle.dd[end]   = handle.halo_sndbuf[halo_base + 1];
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[7]);
+    
+    // Do the backward pass of modified Thomas
+    if(INC) {
+      #pragma omp parallel for
+      for(int y = 0; y < handle.size[1]; y++) {
+        int base = y * handle.pads[0];
+        thomas_backwardInc_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
+                                        &handle.h_u[base], handle.size[2], 
+                                        handle.pads[0] * handle.pads[1], handle.size[0]);
+      }
+    } else {
+      #pragma omp parallel for
+      for(int y = 0; y < handle.size[1]; y++) {
+        int base = y * handle.pads[0];
+        thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
+                                        &handle.h_u[base], handle.size[2], 
+                                        handle.pads[0] * handle.pads[1], handle.size[0]);
+      }
+    }
+    
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[8]);
+  }
+}
+
 // Template instantiations
 template void tridInit<float>(trid_handle<float> &handle, trid_mpi_handle &mpi_handle, 
                               int ndim, int *size);
@@ -529,3 +967,11 @@ template void tridBatch<double, 0>(trid_handle<double> &handle, trid_mpi_handle 
                                    int solveDim);
 template void tridBatch<double, 1>(trid_handle<double> &handle, trid_mpi_handle &mpi_handle, 
                                    int solveDim);
+template void tridBatchTimed<float, 0>(trid_handle<float> &handle, trid_mpi_handle &mpi_handle,
+                                       trid_timer &timer_handle, int solveDim);
+template void tridBatchTimed<float, 1>(trid_handle<float> &handle, trid_mpi_handle &mpi_handle,
+                                       trid_timer &timer_handle, int solveDim);
+template void tridBatchTimed<double, 0>(trid_handle<double> &handle, trid_mpi_handle &mpi_handle,
+                                       trid_timer &timer_handle, int solveDim);
+template void tridBatchTimed<double, 1>(trid_handle<double> &handle, trid_mpi_handle &mpi_handle,
+                                       trid_timer &timer_handle, int solveDim);
