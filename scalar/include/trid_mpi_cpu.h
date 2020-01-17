@@ -35,52 +35,24 @@
 
 #include "mpi.h"
 
-struct tridS_handle {
-  float *a;
-  float *b;
-  float *c;
-  float *du;
-  float *h_u;
+template<typename REAL>
+struct trid_handle {
+  REAL *a;
+  REAL *b;
+  REAL *c;
+  REAL *du;
+  REAL *h_u;
   
-  float *aa;
-  float *cc;
-  float *dd;
+  REAL *aa;
+  REAL *cc;
+  REAL *dd;
   
-  float *aa_r;
-  float *cc_r;
-  float *dd_r;
+  REAL *aa_r;
+  REAL *cc_r;
+  REAL *dd_r;
   
-  float *halo_sndbuf;
-  float *halo_rcvbuf;
-  
-  int ndim;
-  int *size;
-  int *size_g;
-  int *start_g;
-  int *end_g;
-  int *pads;
-  int *sys_len_l;
-  int *n_sys_g;
-  int *n_sys_l;
-};
-
-struct tridD_handle {
-  double *a;
-  double *b;
-  double *c;
-  double *du;
-  double *h_u;
-  
-  double *aa;
-  double *cc;
-  double *dd;
-  
-  double *aa_r;
-  double *cc_r;
-  double *dd_r;
-  
-  double *halo_sndbuf;
-  double *halo_rcvbuf;
+  REAL *halo_sndbuf;
+  REAL *halo_rcvbuf;
   
   int ndim;
   int *size;
@@ -108,20 +80,13 @@ struct trid_mpi_handle {
   MPI_Comm z_comm;
 };
 
-void tridSInit(tridS_handle &handle, trid_mpi_handle &mpi_handle, int ndim, int *size);
+template<typename REAL>
+void tridInit(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int ndim, int *size);
 
-void tridDInit(tridD_handle &handle, trid_mpi_handle &mpi_handle, int ndim, int *size);
+template<typename REAL>
+void tridClean(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle);
 
-void tridSClean(tridS_handle &handle, trid_mpi_handle &mpi_handle);
-
-void tridDClean(tridD_handle &handle, trid_mpi_handle &mpi_handle);
-
-void tridBatchS(tridS_handle &handle, trid_mpi_handle &mpi_handle, int solveDim);
-
-void tridBatchSInc(tridS_handle &handle, trid_mpi_handle &mpi_handle, int solveDim);
-
-void tridBatchD(tridD_handle &handle, trid_mpi_handle &mpi_handle, int solveDim);
-
-void tridBatchDInc(tridD_handle &handle, trid_mpi_handle &mpi_handle, int solveDim);
+template<typename REAL, int INC>
+void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solveDim);
 
 #endif

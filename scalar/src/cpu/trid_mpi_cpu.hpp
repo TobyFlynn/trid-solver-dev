@@ -99,7 +99,8 @@ inline void thomas_on_reduced(
     const int N, 
     const int stride) {
   int   i, ind = 0;
-  FP aa, bb, cc, dd, c2[N_MAX], d2[N_MAX];
+  //FP aa, bb, cc, dd, c2[N_MAX], d2[N_MAX];
+  REAL aa, bb, cc, dd, c2[N], d2[N];
   //
   // forward pass
   //

@@ -122,7 +122,7 @@ void print_array_onrank(int rank, FP* array, app_handle &app, mpi_handle &mpi) {
   }
 }
 
-int init(tridD_handle &trid_handle, trid_mpi_handle &mpi_handle, preproc_handle &pre_handle, int argc, char* argv[]) {
+int init(trid_handle<FP> &trid_handle, trid_mpi_handle &mpi_handle, preproc_handle<FP> &pre_handle, int argc, char* argv[]) {
   if( MPI_Init(&argc,&argv) != MPI_SUCCESS) { printf("MPI Couldn't initialize. Exiting"); exit(-1);}
 
   //int nx, ny, nz, iter, opt, prof;
@@ -149,7 +149,7 @@ int init(tridD_handle &trid_handle, trid_mpi_handle &mpi_handle, preproc_handle 
   
   int size[3] = {nx_g, ny_g, nz_g};
   
-  tridDInit(trid_handle, mpi_handle, 3, size);
+  tridInit<FP>(trid_handle, mpi_handle, 3, size);
 
   if(mpi_handle.rank==0) {
     printf("\nGlobal grid dimensions: %d x %d x %d\n", 
@@ -198,8 +198,8 @@ int init(tridD_handle &trid_handle, trid_mpi_handle &mpi_handle, preproc_handle 
 
 }
 
-void finalize(tridD_handle &trid_handle, trid_mpi_handle &mpi_handle, preproc_handle &pre_handle) {
-  tridDClean(trid_handle, mpi_handle);
+void finalize(trid_handle<FP> &trid_handle, trid_mpi_handle &mpi_handle, preproc_handle<FP> &pre_handle) {
+  tridClean<FP>(trid_handle, mpi_handle);
   _mm_free(pre_handle.halo_snd_x);
   _mm_free(pre_handle.halo_rcv_x);
   _mm_free(pre_handle.halo_snd_y);
@@ -210,8 +210,8 @@ void finalize(tridD_handle &trid_handle, trid_mpi_handle &mpi_handle, preproc_ha
 
 int main(int argc, char* argv[]) {
   trid_mpi_handle mpi_handle;
-  tridD_handle trid_handle;
-  preproc_handle pre_handle;
+  trid_handle<FP> trid_handle;
+  preproc_handle<FP> pre_handle;
   int ret;
   init(trid_handle, mpi_handle, pre_handle, argc, argv);
 
@@ -276,7 +276,7 @@ int main(int argc, char* argv[]) {
 
     MPI_Barrier(MPI_COMM_WORLD);
     //timing_start(app.prof, &timer);
-        preproc_mpi(pre_handle, trid_handle.h_u, trid_handle.du, trid_handle.a,
+        preproc_mpi<FP>(pre_handle, trid_handle.h_u, trid_handle.du, trid_handle.a,
                     trid_handle.b, trid_handle.c, trid_handle, mpi_handle);
         
     printf("Preproc\n");
@@ -289,7 +289,7 @@ int main(int argc, char* argv[]) {
     MPI_Barrier(MPI_COMM_WORLD);
     //timing_start(app.prof, &timer);
     
-    tridBatchDInc(trid_handle, mpi_handle, 0);
+    tridBatch<FP, 1>(trid_handle, mpi_handle, 0);
 
     printf("X\n");
     
@@ -305,7 +305,7 @@ int main(int argc, char* argv[]) {
     //MPI_Barrier(MPI_COMM_WORLD);
     //timing_start(app.prof, &timer);
 
-    tridBatchDInc(trid_handle, mpi_handle, 1);
+    tridBatch<FP, 1>(trid_handle, mpi_handle, 1);
     
     printf("Y\n");
     
@@ -320,7 +320,7 @@ int main(int argc, char* argv[]) {
     //MPI_Barrier(MPI_COMM_WORLD);
     //timing_start(app.prof, &timer);
     
-    tridBatchDInc(trid_handle, mpi_handle, 2);
+    tridBatch<FP, 1>(trid_handle, mpi_handle, 2);
     
     printf("Z\n");
     

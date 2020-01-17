@@ -39,20 +39,21 @@
 #include "mpi.h"
 #include "trid_mpi_cpu.h"
 
+template<typename REAL>
 struct preproc_handle {
-  double *halo_snd_x;
-  double *halo_rcv_x;
-  double *halo_snd_y;
-  double *halo_rcv_y;
-  double *halo_snd_z;
-  double *halo_rcv_z;
+  REAL *halo_snd_x;
+  REAL *halo_rcv_x;
+  REAL *halo_snd_y;
+  REAL *halo_rcv_y;
+  REAL *halo_snd_z;
+  REAL *halo_rcv_z;
   
-  double lambda;
+  REAL lambda;
 };
 
-//template<typename REAL>
+template<typename REAL>
 //inline void preproc_mpi(REAL lambda, REAL* __restrict u, REAL* __restrict du, REAL* __restrict ax, REAL* __restrict bx, REAL* __restrict cx, REAL* __restrict ay, REAL* __restrict by, REAL* __restrict cy, REAL* __restrict az, REAL* __restrict bz, REAL* __restrict cz, int nx, int nx_pad, int ny, int nz, int ny_g, int nz_g, int nx_g, int x_start_g, int x_end_g) {
-inline void preproc_mpi(preproc_handle &pre_handle, double* __restrict u, double* __restrict du, double* __restrict a, double* __restrict b, double* __restrict c, tridD_handle &trid_handle, trid_mpi_handle &mpi_handle) {
+inline void preproc_mpi(preproc_handle<REAL> &pre_handle, REAL* __restrict u, REAL* __restrict du, REAL* __restrict a, REAL* __restrict b, REAL* __restrict c, trid_handle<REAL> &trid_handle, trid_mpi_handle &mpi_handle) {
   int   i, j, k, ind;
   double elapsed, timer = 0.0;
   //
@@ -259,7 +260,7 @@ inline void preproc_mpi(preproc_handle &pre_handle, double* __restrict u, double
   
   //timing_end(app.prof, &timer, &app.elapsed_time[9], app.elapsed_name[9]);
 
-  double tmp, ux_1, ux_2, uy_1, uy_2, uz_1, uz_2;
+  REAL tmp, ux_1, ux_2, uy_1, uy_2, uz_1, uz_2;
 
   //timing_start(app.prof, &timer);
   for(k = 0; k < nz; k++) {

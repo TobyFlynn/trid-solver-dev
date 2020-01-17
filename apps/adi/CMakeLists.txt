@@ -85,7 +85,8 @@ if (BUILD_FOR_CPU)
   add_executable(adi_mpi_cpu src/adi_mpi_cpu.cpp)
   target_compile_definitions(adi_mpi_cpu PRIVATE -D__MKL__)
   target_include_directories(adi_mpi_cpu PRIVATE ${INTEL_PATH}/mkl/include ${LIBTRID_PATH}/include ${PROJECT_SOURCE_DIR}/include ${MPI_PATH}/include)
-  target_link_libraries(adi_mpi_cpu PRIVATE -L${LIBTRID_PATH}/lib -ltridcpu -L${INTEL_PATH}/compiler/lib/intel64 -L${MPI_PATH}/lib -lmpi -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
+  #target_link_libraries(adi_mpi_cpu PRIVATE -L${LIBTRID_PATH}/lib -ltridcpu -L${INTEL_PATH}/compiler/lib/intel64 -L${MPI_PATH}/lib -lmpi -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
+  target_link_libraries(adi_mpi_cpu PRIVATE ${LIBTRID_PATH}/lib/libtridcpu.so -L${INTEL_PATH}/compiler/lib/intel64 -L${MPI_PATH}/lib -lmpi -limf -lintlc -lsvml -lirng -liomp5 -lcilkrts)
 
 endif (BUILD_FOR_CPU)
 
