@@ -12,6 +12,8 @@
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
 
+#define Z_BATCH 64
+
 inline double elapsed_time(double *et) {
   struct timeval t;
   double old_time = *et;
@@ -309,7 +311,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
       thomas_forward_vec_strip<REAL>(&handle.a[base], &handle.b[base], &handle.c[base],
                                &handle.du[base], &handle.h_u[base], &handle.aa[base],
                                &handle.cc[base], &handle.dd[base], handle.size[1],
-                               handle.pads[0], handle.size[0]);
+                               handle.pads[0], /*handle.size[0]*/ handle.pads[0]);
     }
     
     // Pack boundary values
@@ -402,7 +404,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
         int base = z * handle.pads[0] * handle.pads[1];
         thomas_backwardInc_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
                                         &handle.h_u[base], handle.size[1], handle.pads[0],
-                                        handle.size[0]);
+                                        /*handle.size[0]*/ handle.pads[0]);
       }
     } else {
       #pragma omp parallel for
@@ -410,7 +412,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
         int base = z * handle.pads[0] * handle.pads[1];
         thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
                                         &handle.h_u[base], handle.size[1], handle.pads[0],
-                                        handle.size[0]);
+                                        /*handle.size[0]*/ handle.pads[0]);
       }
     }
   } else {
@@ -422,12 +424,20 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Do modified thomas forward pass
     #pragma omp parallel for
-    for(int y = 0; y < handle.size[1]; y++) {
-      int base = y * handle.pads[0];
+    for(int base = 0; base < ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH); base += Z_BATCH) {
       thomas_forward_vec_strip<REAL>(&handle.a[base], &handle.b[base], &handle.c[base],
                                &handle.du[base], &handle.h_u[base], &handle.aa[base],
                                &handle.cc[base], &handle.dd[base], handle.size[2],
-                               handle.pads[0] * handle.pads[1], handle.size[0]);
+                               handle.pads[0] * handle.pads[1], Z_BATCH);
+    }
+    
+    if(handle.size[1] * handle.pads[0] != ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH)) {
+      int base = ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH);
+      int length = (handle.size[1] * handle.pads[0]) - base;
+      thomas_forward_vec_strip<REAL>(&handle.a[base], &handle.b[base], &handle.c[base],
+                               &handle.du[base], &handle.h_u[base], &handle.aa[base],
+                               &handle.cc[base], &handle.dd[base], handle.size[2],
+                               handle.pads[0] * handle.pads[1], length);
     }
     
     // Pack boundary values
@@ -516,19 +526,33 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     // Do the backward pass of modified Thomas
     if(INC) {
       #pragma omp parallel for
-      for(int y = 0; y < handle.size[1]; y++) {
-        int base = y * handle.pads[0];
+      for(int base = 0; base < ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH); base += Z_BATCH) {
         thomas_backwardInc_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
                                         &handle.h_u[base], handle.size[2], 
-                                        handle.pads[0] * handle.pads[1], handle.size[0]);
+                                        handle.pads[0] * handle.pads[1], Z_BATCH);
+      }
+      
+      if(handle.size[1] * handle.pads[0] != ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH)) {
+        int base = ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH);
+        int length = (handle.size[1] * handle.pads[0]) - base;
+        thomas_backwardInc_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
+                                        &handle.h_u[base], handle.size[2], 
+                                        handle.pads[0] * handle.pads[1], length);
       }
     } else {
       #pragma omp parallel for
-      for(int y = 0; y < handle.size[1]; y++) {
-        int base = y * handle.pads[0];
+      for(int base = 0; base < ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH); base += Z_BATCH) {
         thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
                                         &handle.h_u[base], handle.size[2], 
-                                        handle.pads[0] * handle.pads[1], handle.size[0]);
+                                        handle.pads[0] * handle.pads[1], Z_BATCH);
+      }
+      
+      if(handle.size[1] * handle.pads[0] != ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH)) {
+        int base = ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH);
+        int length = (handle.size[1] * handle.pads[0]) - base;
+        thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
+                                        &handle.h_u[base], handle.size[2], 
+                                        handle.pads[0] * handle.pads[1], length);
       }
     }
   }
@@ -688,7 +712,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       thomas_forward_vec_strip<REAL>(&handle.a[base], &handle.b[base], &handle.c[base],
                                &handle.du[base], &handle.h_u[base], &handle.aa[base],
                                &handle.cc[base], &handle.dd[base], handle.size[1],
-                               handle.pads[0], handle.size[0]);
+                               handle.pads[0], /*handle.size[0]*/ handle.pads[0]);
     }
     
     timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[0]);
@@ -797,7 +821,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
         int base = z * handle.pads[0] * handle.pads[1];
         thomas_backwardInc_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
                                         &handle.h_u[base], handle.size[1], handle.pads[0],
-                                        handle.size[0]);
+                                        /*handle.size[0]*/ handle.pads[0]);
       }
     } else {
       #pragma omp parallel for
@@ -805,7 +829,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
         int base = z * handle.pads[0] * handle.pads[1];
         thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
                                         &handle.h_u[base], handle.size[1], handle.pads[0],
-                                        handle.size[0]);
+                                        /*handle.size[0]*/ handle.pads[0]);
       }
     }
     
@@ -822,12 +846,20 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     
     // Do modified thomas forward pass
     #pragma omp parallel for
-    for(int y = 0; y < handle.size[1]; y++) {
-      int base = y * handle.pads[0];
+    for(int base = 0; base < ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH); base += Z_BATCH) {
       thomas_forward_vec_strip<REAL>(&handle.a[base], &handle.b[base], &handle.c[base],
                                &handle.du[base], &handle.h_u[base], &handle.aa[base],
                                &handle.cc[base], &handle.dd[base], handle.size[2],
-                               handle.pads[0] * handle.pads[1], handle.size[0]);
+                               handle.pads[0] * handle.pads[1], Z_BATCH);
+    }
+    
+    if(handle.size[1] * handle.pads[0] != ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH)) {
+      int base = ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH);
+      int length = (handle.size[1] * handle.pads[0]) - base;
+      thomas_forward_vec_strip<REAL>(&handle.a[base], &handle.b[base], &handle.c[base],
+                               &handle.du[base], &handle.h_u[base], &handle.aa[base],
+                               &handle.cc[base], &handle.dd[base], handle.size[2],
+                               handle.pads[0] * handle.pads[1], length);
     }
     
     timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[0]);
@@ -932,19 +964,33 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     // Do the backward pass of modified Thomas
     if(INC) {
       #pragma omp parallel for
-      for(int y = 0; y < handle.size[1]; y++) {
-        int base = y * handle.pads[0];
+      for(int base = 0; base < ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH); base += Z_BATCH) {
         thomas_backwardInc_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
                                         &handle.h_u[base], handle.size[2], 
-                                        handle.pads[0] * handle.pads[1], handle.size[0]);
+                                        handle.pads[0] * handle.pads[1], Z_BATCH);
+      }
+      
+      if(handle.size[1] * handle.pads[0] != ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH)) {
+        int base = ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH);
+        int length = (handle.size[1] * handle.pads[0]) - base;
+        thomas_backwardInc_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
+                                        &handle.h_u[base], handle.size[2], 
+                                        handle.pads[0] * handle.pads[1], length);
       }
     } else {
       #pragma omp parallel for
-      for(int y = 0; y < handle.size[1]; y++) {
-        int base = y * handle.pads[0];
+      for(int base = 0; base < ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH); base += Z_BATCH) {
         thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
                                         &handle.h_u[base], handle.size[2], 
-                                        handle.pads[0] * handle.pads[1], handle.size[0]);
+                                        handle.pads[0] * handle.pads[1], Z_BATCH);
+      }
+      
+      if(handle.size[1] * handle.pads[0] != ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH)) {
+        int base = ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH);
+        int length = (handle.size[1] * handle.pads[0]) - base;
+        thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
+                                        &handle.h_u[base], handle.size[2], 
+                                        handle.pads[0] * handle.pads[1], length);
       }
     }
     
