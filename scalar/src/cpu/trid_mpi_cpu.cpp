@@ -33,6 +33,25 @@ inline void timing_end(double *timer, double *elapsed_accumulate) {
   *elapsed_accumulate += elapsed;
 }
 
+void setStartEnd(int *start, int *end, int coord, int numProcs, int numElements) {
+  int tmp = numElements / numProcs;
+  int remainder = numElements % numProcs;
+  int total = 0;
+  for(int i = 0; i < coord; i++) {
+    if(i < remainder) {
+      total += tmp + 1;
+    } else {
+      total += tmp;
+    }
+  }
+  *start = total;
+  if(coord < remainder) {
+    *end = *start + tmp;
+  } else {
+    *end = *start + tmp -1;
+  }
+}
+
 template<typename REAL>
 void tridInit(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int ndim, int *size) {
   // Get number of mpi procs and the rank of this mpi proc
@@ -42,7 +61,7 @@ void tridInit(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int ndim, 
   // Split into multi dim arrangement of mpi procs
   handle.ndim = ndim;
   mpi_handle.pdims    = (int *) calloc(handle.ndim, sizeof(int));
-  mpi_handle.periodic = (int *) calloc(handle.ndim, sizeof(int));; //false
+  mpi_handle.periodic = (int *) calloc(handle.ndim, sizeof(int)); //false
   mpi_handle.coords   = (int *) calloc(handle.ndim, sizeof(int));
   MPI_Dims_create(mpi_handle.procs, handle.ndim, mpi_handle.pdims);
   
@@ -84,15 +103,18 @@ void tridInit(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int ndim, 
   handle.end_g   = (int *) calloc(handle.ndim, sizeof(int));
   
   for(int i = 0; i < handle.ndim; i++) {
-    int tmp = 1 + (handle.size_g[i] - 1) / mpi_handle.pdims[i];
+    setStartEnd(&handle.start_g[i], &handle.end_g[i], mpi_handle.coords[i], mpi_handle.pdims[i], 
+                handle.size_g[i]);
+    
+    /*int tmp = 1 + (handle.size_g[i] - 1) / mpi_handle.pdims[i];
     
     handle.start_g[i] = mpi_handle.coords[i] * tmp;
-    handle.end_g[i]   = MIN(((mpi_handle.coords[i] + 1) * tmp) - 1, handle.size_g[i] - 1);
+    handle.end_g[i]   = MIN(((mpi_handle.coords[i] + 1) * tmp) - 1, handle.size_g[i] - 1);*/
     handle.size[i]    = handle.end_g[i] - handle.start_g[i] + 1;
     
     // Only pad the x dimension
     if(i == 0) {
-      handle.pads[i] = (1 + ((tmp - 1) / SIMD_VEC)) * SIMD_VEC;
+      handle.pads[i] = (1 + ((handle.size[i] - 1) / SIMD_VEC)) * SIMD_VEC;
     } else {
       handle.pads[i] = handle.size[i];
     }
