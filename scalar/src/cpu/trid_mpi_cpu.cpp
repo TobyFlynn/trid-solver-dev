@@ -12,7 +12,7 @@
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
 
-#define Z_BATCH 64
+#define Z_BATCH 56
 
 inline double elapsed_time(double *et) {
   struct timeval t;
@@ -64,6 +64,11 @@ void tridInit(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int ndim, 
   mpi_handle.periodic = (int *) calloc(handle.ndim, sizeof(int)); //false
   mpi_handle.coords   = (int *) calloc(handle.ndim, sizeof(int));
   MPI_Dims_create(mpi_handle.procs, handle.ndim, mpi_handle.pdims);
+  
+  // Reorder dims
+  int tmp = mpi_handle.pdims[1];
+  mpi_handle.pdims[1] = mpi_handle.pdims[2];
+  mpi_handle.pdims[2] = tmp;
   
   // Create cartecian mpi comm
   MPI_Cart_create(MPI_COMM_WORLD, handle.ndim, mpi_handle.pdims, mpi_handle.periodic, 0,  &mpi_handle.comm);
