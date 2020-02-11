@@ -30,6 +30,8 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+// Written by Toby Flynn, University of Warwick, T.Flynn@warwick.ac.uk, 2020
+
 #ifndef __TRID_MPI_CPU_H
 #define __TRID_MPI_CPU_H
 

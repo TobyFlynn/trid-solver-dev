@@ -30,12 +30,10 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014
+// Written by Toby Flynn, University of Warwick, T.Flynn@warwick.ac.uk, 2020
 
-//#include"adi_simd.h"
-#include"trid_simd.h"
+#include "trid_simd.h"
 
-#include "adi_mpi.h"
 #include "mpi.h"
 #include "trid_mpi_cpu.h"
 
@@ -52,21 +50,9 @@ struct preproc_handle {
 };
 
 template<typename REAL>
-//inline void preproc_mpi(REAL lambda, REAL* __restrict u, REAL* __restrict du, REAL* __restrict ax, REAL* __restrict bx, REAL* __restrict cx, REAL* __restrict ay, REAL* __restrict by, REAL* __restrict cy, REAL* __restrict az, REAL* __restrict bz, REAL* __restrict cz, int nx, int nx_pad, int ny, int nz, int ny_g, int nz_g, int nx_g, int x_start_g, int x_end_g) {
 inline void preproc_mpi(preproc_handle<REAL> &pre_handle, REAL* __restrict u, REAL* __restrict du, REAL* __restrict a, REAL* __restrict b, REAL* __restrict c, trid_handle<REAL> &trid_handle, trid_mpi_handle &mpi_handle) {
   int   i, j, k, ind;
   double elapsed, timer = 0.0;
-  //
-  // calculate r.h.s. and set tri-diagonal coefficients
-  //
-  //#ifndef VALID
-  //  #pragma omp parallel for collapse(2) private(i,ind,a,b,c,d)
-  //#endif
-
-  //  REAL *halo_sndbuf = (REAL*) _mm_malloc(2*app.ny*app.nz*sizeof(REAL),SIMD_WIDTH); // Send Buffer
-  //  REAL *halo_rcvbuf = (REAL*) _mm_malloc(2*app.ny*app.nz*sizeof(REAL),SIMD_WIDTH); // Receive Buffer
-
-  //timing_start(app.prof, &timer);
   
   int nx = trid_handle.size[0];
   int ny = trid_handle.size[1];
@@ -257,12 +243,9 @@ inline void preproc_mpi(preproc_handle<REAL> &pre_handle, REAL* __restrict u, RE
       MPI_Recv(&pre_handle.halo_rcv_z[1*ny*nx], nx*ny, MPI_DOUBLE, source_rank, 0, 
                mpi_handle.comm, MPI_STATUS_IGNORE);
   }
-  
-  //timing_end(app.prof, &timer, &app.elapsed_time[9], app.elapsed_name[9]);
 
   REAL tmp, ux_1, ux_2, uy_1, uy_2, uz_1, uz_2;
-
-  //timing_start(app.prof, &timer);
+  
   for(k = 0; k < nz; k++) {
     for(j = 0; j < ny; j++) {
       for(i = 0; i < nx; i++) {   // i loop innermost for sequential memory access
@@ -329,5 +312,4 @@ inline void preproc_mpi(preproc_handle<REAL> &pre_handle, REAL* __restrict u, RE
       }
     }
   }
-  //timing_end(app.prof, &timer, &app.elapsed_time[10], app.elapsed_name[10]);
 }

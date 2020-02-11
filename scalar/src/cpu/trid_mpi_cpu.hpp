@@ -31,6 +31,7 @@
  */
 
 // Written by Endre Laszlo, University of Oxford, endre.laszlo@oerc.ox.ac.uk, 2013-2014 
+// Extended by Toby Flynn, University of Warwick, T.Flynn@warwick.ac.uk, 2020
 
 #ifndef __TRID_MPI_CPU_HPP
 #define __TRID_MPI_CPU_HPP
