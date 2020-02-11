@@ -104,6 +104,18 @@ void rms(char* name, FP* array, int nx_pad, int nx, int ny, int nz) {
   printf("%s sum = %lg\n", name, sum);
 }
 
+void print_array_global(FP* array, int nx, int ny, int nz, int nx_pad) {
+  for(int z = 0; z < nz; z++) {
+    for(int y = 0; y < ny; y++) {
+      for(int x = 0; x < nx; x++) {
+        int ind = z * ny * nx_pad + y * nx_pad + x;
+        printf("%.15f ", array[ind]);
+      }
+      printf("\n");
+    }
+  }
+}
+
 extern char *optarg;
 extern int  optind, opterr, optopt;
 static struct option options[] = {
@@ -179,8 +191,8 @@ int main(int argc, char* argv[]) {
   h_bz = (FP *)_mm_malloc(sizeof(FP)*nx_pad*ny*nz,SIMD_WIDTH);
   h_cz = (FP *)_mm_malloc(sizeof(FP)*nx_pad*ny*nz,SIMD_WIDTH);
 
-  printf("\nGrid dimensions: %d x %d x %d\n", nx, ny, nz);
-  printf("Check parameters: SIMD_WIDTH = %d, sizeof(FP) = %d, nx_pad = %d \n",SIMD_WIDTH,sizeof(FP),nx_pad);
+  /*printf("\nGrid dimensions: %d x %d x %d\n", nx, ny, nz);
+  printf("Check parameters: SIMD_WIDTH = %d, sizeof(FP) = %d, nx_pad = %d \n",SIMD_WIDTH,sizeof(FP),nx_pad);*/
 
   // Initialize
   for(k=0; k<nz; k++) {
@@ -269,12 +281,14 @@ int main(int argc, char* argv[]) {
     timing_end(prof, &timer, &elapsed_trid_z, "trid_z");
   }
   
-  rms("end h_u",h_u, nx_pad, nx, ny, nz);
-  rms("end du", h_du, nx_pad, nx, ny, nz);
+  print_array_global(h_u, nx, ny, nz, nx_pad);
+  
+  /*rms("end h_u",h_u, nx_pad, nx, ny, nz);
+  rms("end du", h_du, nx_pad, nx, ny, nz);*/
   
   elapsed = elapsed_time(&timer2);
   elapsed_total = elapsed;
-  printf("\nADI total execution time for %d iterations (sec): %f (s) \n", iter, elapsed);
+  //printf("\nADI total execution time for %d iterations (sec): %f (s) \n", iter, elapsed);
   fflush(0);
 
   int ldim=nx_pad;
@@ -292,7 +306,7 @@ int main(int argc, char* argv[]) {
   _mm_free(h_bz);
   _mm_free(h_cz);
 
-  printf("Done.\n");
+  /*printf("Done.\n");
 
   // Print execution times
   if(prof == 0) {
@@ -307,7 +321,7 @@ int main(int argc, char* argv[]) {
       (elapsed_trid_x/iter)/(nx*ny*nz),
       (elapsed_trid_y/iter)/(nx*ny*nz),
       (elapsed_trid_z/iter)/(nx*ny*nz));
-  }
+  }*/
   exit(0);
 
 }
