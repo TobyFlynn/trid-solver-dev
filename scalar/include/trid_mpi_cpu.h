@@ -53,8 +53,11 @@ struct trid_handle {
   REAL *cc_r;
   REAL *dd_r;
   
-  REAL *halo_sndbuf;
-  REAL *halo_rcvbuf;
+  REAL *halo_sndbuf_g;
+  REAL *halo_rcvbuf_g;
+  
+  REAL *halo_sndbuf_s;
+  REAL *halo_rcvbuf_s;
   
   int ndim;
   int *size;

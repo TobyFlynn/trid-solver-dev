@@ -101,7 +101,19 @@ void rms(char* name, FP* array, int nx_pad, int nx, int ny, int nz) {
     }
   }
 
-  printf("%s sum = %lg\n", name, sum);
+  printf("%s sum = %.10lg\n", name, sum);
+}
+
+void print_array_global(FP* array, int nx, int ny, int nz, int nx_pad) {
+  for(int z = 0; z < nz; z++) {
+    for(int y = 0; y < ny; y++) {
+      for(int x = 0; x < nx; x++) {
+        int ind = z * ny * nx_pad + y * nx_pad + x;
+        printf("%.15f ", array[ind]);
+      }
+      printf("\n");
+    }
+  }
 }
 
 extern char *optarg;
@@ -179,8 +191,8 @@ int main(int argc, char* argv[]) {
   h_bz = (FP *)_mm_malloc(sizeof(FP)*nx_pad*ny*nz,SIMD_WIDTH);
   h_cz = (FP *)_mm_malloc(sizeof(FP)*nx_pad*ny*nz,SIMD_WIDTH);
 
-  printf("\nGrid dimensions: %d x %d x %d\n", nx, ny, nz);
-  printf("Check parameters: SIMD_WIDTH = %d, sizeof(FP) = %d, nx_pad = %d \n",SIMD_WIDTH,sizeof(FP),nx_pad);
+  /*printf("\nGrid dimensions: %d x %d x %d\n", nx, ny, nz);
+  printf("Check parameters: SIMD_WIDTH = %d, sizeof(FP) = %d, nx_pad = %d \n",SIMD_WIDTH,sizeof(FP),nx_pad);*/
 
   // Initialize
   for(k=0; k<nz; k++) {
@@ -211,9 +223,16 @@ int main(int argc, char* argv[]) {
     //
     // calculate r.h.s. and set tri-diagonal coefficients
     //
+    
+    /*rms("start h_u",h_u, nx_pad, nx, ny, nz);
+    rms("start du", h_du, nx_pad, nx, ny, nz);*/
+    
     timing_start(prof, &timer);
       preproc<FP>(lambda, h_u, h_du, h_ax, h_bx, h_cx, h_ay, h_by, h_cy, h_az, h_bz, h_cz, nx, nx_pad, ny, nz);
     timing_end(prof, &timer, &elapsed_preproc, "preproc");
+    
+    /*rms("preproc h_u",h_u, nx_pad, nx, ny, nz);
+    rms("preproc du", h_du, nx_pad, nx, ny, nz);*/
     
     //
     // perform tri-diagonal solves in x-direction
@@ -240,6 +259,25 @@ int main(int argc, char* argv[]) {
 
     timing_end(prof, &timer, &elapsed_trid_x, "trid_x");
     
+    rms("x h_u",h_u, nx_pad, nx, ny, nz);
+    rms("x du", h_du, nx_pad, nx, ny, nz);
+    
+    //print_array_global(h_u, nx, ny, nz, pads[0]);
+    
+    _mm_free(h_u);
+    _mm_free(h_du);
+    _mm_free(h_ax);
+    _mm_free(h_bx);
+    _mm_free(h_cx);
+    _mm_free(h_ay);
+    _mm_free(h_by);
+    _mm_free(h_cy);
+    _mm_free(h_az);
+    _mm_free(h_bz);
+    _mm_free(h_cz);
+    
+    exit(0);
+    
     //
     // perform tri-diagonal solves in y-direction
     //
@@ -253,6 +291,9 @@ int main(int argc, char* argv[]) {
     #endif
     
     timing_end(prof, &timer, &elapsed_trid_y, "trid_y");
+    
+    rms("y h_u",h_u, nx_pad, nx, ny, nz);
+    rms("y du", h_du, nx_pad, nx, ny, nz);
 
     //
     // perform tridiagonal solves in z-direction

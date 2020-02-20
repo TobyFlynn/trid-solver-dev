@@ -117,29 +117,58 @@ void rms(char* name, FP* array, trid_handle<FP> &handle, trid_mpi_handle &mpi_ha
   MPI_Allreduce(&sum, &global_sum,1, MPI_DOUBLE,MPI_SUM, mpi_handle.comm);
 
   if(mpi_handle.rank ==0) {
-    printf("%s sum = %lg\n", name, global_sum);
+    printf("%s sum = %.15lg\n", name, global_sum);
     //printf("%s rms = %2.15lg\n",name, sqrt(global_sum)/((double)(app.nx_g*app.ny_g*app.nz_g)));
   }
 
 }
-/*
-void print_array_onrank(int rank, FP* array, app_handle &app, mpi_handle &mpi) {
-  if(mpi.rank == rank) {
-    printf("On mpi rank %d\n",rank);
-    for(int k=0; k<2; k++) {
-        printf("k = %d\n",k);
-        for(int j=0; j<MIN(app.ny,17); j++) {
-          printf(" %d   ", j);
-          for(int i=0; i<MIN(app.nx,17); i++) {
-            int ind = k*app.nx_pad*app.ny + j*app.nx_pad + i;
-            printf(" %5.5g ", array[ind]);
+
+void print_array_global(FP* array, trid_handle<FP> &handle, trid_mpi_handle &mpi_handle) {
+  
+  for(int p = 0; p < mpi_handle.procs; p++) {
+    MPI_Barrier(MPI_COMM_WORLD);
+    if(mpi_handle.rank == p) {
+      for(int z = 0; z < handle.size[2]; z++) {
+        for(int y = 0; y < handle.size[1]; y++) {
+          for(int x = 0; x < handle.size[0]; x++) {
+            int ind = z * handle.pads[1] * handle.pads[0] + y * handle.pads[0] + x;
+            printf("%.15f ", array[ind]);
           }
           printf("\n");
-        }
-        printf("\n");
+        } 
       }
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
   }
-}*/
+//   for(int z = 0; z < handle.size_g[2]; z++) {
+//     for(int y = 0; y < handle.size_g[1]; y++) {
+//       for(int x = 0; x < handle.size_g[0]/*mpi_handle.pdims[0]*/; x++) {
+//         MPI_Barrier(mpi_handle.comm);
+//         printf("Rank %d, coord %d, %d, %d\n", mpi_handle.rank, x, y, z);
+//         fflush(stdout);
+//         MPI_Barrier(mpi_handle.comm);
+//         if(/*x >= handle.start_g[0] && x <= handle.end_g[0]*/x == mpi_handle.coords[0]
+//            && y >= handle.start_g[1] && y <= handle.end_g[1] 
+//            && z >= handle.start_g[2] && z <= handle.end_g[2]) {
+//           for(int x_l = 0; x_l < handle.size[0]; x_l++) {
+//             //int x_l = x - handle.start_g[0];
+//             int y_l = y - handle.start_g[1];
+//             int z_l = z - handle.start_g[2];
+//             int ind = z_l * handle.pads[1] * handle.pads[0] + y_l * handle.pads[0] + x_l;
+//             //printf("%.15f ", array[ind]);
+//             //fflush(stdout);
+//           }
+//         }
+//         MPI_Barrier(MPI_COMM_WORLD);
+//       }
+//       MPI_Barrier(MPI_COMM_WORLD);
+//       /*if(mpi_handle.rank == 0) {
+//         printf("\n");
+//       }*/
+//       MPI_Barrier(MPI_COMM_WORLD);
+//     }
+//   }
+}
 
 int init(trid_handle<FP> &trid_handle, trid_mpi_handle &mpi_handle, preproc_handle<FP> &pre_handle, int &iter, int argc, char* argv[]) {
   if( MPI_Init(&argc,&argv) != MPI_SUCCESS) { printf("MPI Couldn't initialize. Exiting"); exit(-1);}
@@ -170,14 +199,14 @@ int init(trid_handle<FP> &trid_handle, trid_mpi_handle &mpi_handle, preproc_hand
   
   tridInit<FP>(trid_handle, mpi_handle, 3, size);
 
-  if(mpi_handle.rank==0) {
+  /*if(mpi_handle.rank==0) {
     printf("\nGlobal grid dimensions: %d x %d x %d\n", 
            trid_handle.size_g[0], trid_handle.size_g[1], trid_handle.size_g[2]);
 
     printf("\nNumber of MPI procs in each dimenstion %d, %d, %d\n",
            mpi_handle.pdims[0], mpi_handle.pdims[1], mpi_handle.pdims[2]);
-  }
-
+  }*/
+/*
   printf("Check parameters: SIMD_WIDTH = %d, sizeof(FP) = %d\n", SIMD_WIDTH, sizeof(FP));
   printf("Check parameters: nx_pad (padded) = %d\n", trid_handle.pads[0]);
   printf("Check parameters: nx = %d, x_start_g = %d, x_end_g = %d \n", 
@@ -185,7 +214,7 @@ int init(trid_handle<FP> &trid_handle, trid_mpi_handle &mpi_handle, preproc_hand
   printf("Check parameters: ny = %d, y_start_g = %d, y_end_g = %d \n", 
          trid_handle.size[1], trid_handle.start_g[1], trid_handle.end_g[1]);
   printf("Check parameters: nz = %d, z_start_g = %d, z_end_g = %d \n",
-         trid_handle.size[2], trid_handle.start_g[2], trid_handle.end_g[2]);
+         trid_handle.size[2], trid_handle.start_g[2], trid_handle.end_g[2]);*/
   
   // Initialize
   for(int k = 0; k < trid_handle.size[2]; k++) {
@@ -264,12 +293,18 @@ int main(int argc, char* argv[]) {
   
   for(int it = 0; it < iter; it++) {
     
+    rms("start h_u", trid_handle.h_u, trid_handle, mpi_handle);
+    rms("start du", trid_handle.du, trid_handle, mpi_handle);
+    
     timing_start(&timer);
     
     preproc_mpi<FP>(pre_handle, trid_handle.h_u, trid_handle.du, trid_handle.a,
                     trid_handle.b, trid_handle.c, trid_handle, mpi_handle);
     
     timing_end(&timer, &elapsed_preproc);
+    
+    rms("preproc h_u", trid_handle.h_u, trid_handle, mpi_handle);
+    rms("preproc du", trid_handle.du, trid_handle, mpi_handle);
 
     //
     // perform tri-diagonal solves in x-direction
@@ -283,7 +318,19 @@ int main(int argc, char* argv[]) {
 #endif
     
     timing_end(&timer, &elapsed_trid_x);
+    
+    rms("x h_u", trid_handle.h_u, trid_handle, mpi_handle);
+    rms("x du", trid_handle.du, trid_handle, mpi_handle);
 
+    //print_array_global(trid_handle.h_u, trid_handle, mpi_handle);
+    
+    MPI_Barrier(MPI_COMM_WORLD);
+  
+    finalize(trid_handle, mpi_handle, pre_handle);
+    
+    MPI_Finalize();
+    return 0;
+    
     //
     // perform tri-diagonal solves in y-direction
     //
@@ -296,6 +343,9 @@ int main(int argc, char* argv[]) {
 #endif
     
     timing_end(&timer, &elapsed_trid_y);
+    
+    //rms("y h_u", trid_handle.h_u, trid_handle, mpi_handle);
+    //rms("y du", trid_handle.du, trid_handle, mpi_handle);
     
     //
     // perform tri-diagonal solves in z-direction
@@ -355,7 +405,7 @@ int main(int argc, char* argv[]) {
     }
   }*/
   
-  MPI_Barrier(MPI_COMM_WORLD);
+  /*MPI_Barrier(MPI_COMM_WORLD);
   if(mpi_handle.rank == 0) {
     printf("Average time in trid-x segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s]\n",
             elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4], elapsed_name[5], elapsed_name[6], elapsed_name[7], elapsed_name[8]);
@@ -386,7 +436,7 @@ int main(int argc, char* argv[]) {
         timers_avg[i] /= mpi_handle.procs;
     
     avg_total /= mpi_handle.procs;
-  }
+  }*/
   
   /*for(int i=0; i<mpi_handle.procs; i++) {
     MPI_Barrier(MPI_COMM_WORLD);
@@ -413,7 +463,7 @@ int main(int argc, char* argv[]) {
     }
   }*/
   
-  MPI_Barrier(MPI_COMM_WORLD);
+  /*MPI_Barrier(MPI_COMM_WORLD);
   if(mpi_handle.rank == 0) {
     printf("Average time in trid-y segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s]\n",
             elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4], elapsed_name[5], elapsed_name[6], elapsed_name[7], elapsed_name[8]);
@@ -444,7 +494,7 @@ int main(int argc, char* argv[]) {
         timers_avg[i] /= mpi_handle.procs;
     
     avg_total /= mpi_handle.procs;
-  }
+  }*/
   
   /*for(int i=0; i<mpi_handle.procs; i++) {
     MPI_Barrier(MPI_COMM_WORLD);
@@ -471,7 +521,7 @@ int main(int argc, char* argv[]) {
     }
   }*/
   
-  MPI_Barrier(MPI_COMM_WORLD);
+  /*MPI_Barrier(MPI_COMM_WORLD);
   if(mpi_handle.rank == 0) {
     printf("Average time in trid-z segments[ms]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s]\n",
             elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4], elapsed_name[5], elapsed_name[6], elapsed_name[7], elapsed_name[8]);
@@ -505,7 +555,7 @@ int main(int argc, char* argv[]) {
         (elapsed_trid_x/iter ) / (trid_handle.size_g[0] * trid_handle.size_g[1] * trid_handle.size_g[2]),
         (elapsed_trid_y/iter ) / (trid_handle.size_g[0] * trid_handle.size_g[1] * trid_handle.size_g[2]),
         (elapsed_trid_z/iter ) / (trid_handle.size_g[0] * trid_handle.size_g[1] * trid_handle.size_g[2]));
-  }
+  }*/
   MPI_Barrier(MPI_COMM_WORLD);
   
   finalize(trid_handle, mpi_handle, pre_handle);
