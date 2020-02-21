@@ -53,11 +53,8 @@ struct trid_handle {
   REAL *cc_r;
   REAL *dd_r;
   
-  REAL *halo_sndbuf_g;
-  REAL *halo_rcvbuf_g;
-  
-  REAL *halo_sndbuf_s;
-  REAL *halo_rcvbuf_s;
+  REAL *sndbuf;
+  REAL *rcvbuf;
   
   int ndim;
   int *size;
@@ -65,9 +62,8 @@ struct trid_handle {
   int *start_g;
   int *end_g;
   int *pads;
-  int *sys_len_l;
-  int *n_sys_g;
-  int *n_sys_l;
+  int *sys_len_r;
+  int *n_sys;
 };
 
 struct trid_mpi_handle {
@@ -87,9 +83,9 @@ struct trid_mpi_handle {
 
 struct trid_timer {
   double timer;
-  double elapsed_time_x[11];
-  double elapsed_time_y[11];
-  double elapsed_time_z[11];
+  double elapsed_time_x[4];
+  double elapsed_time_y[5];
+  double elapsed_time_z[5];
 };
 
 template<typename REAL>

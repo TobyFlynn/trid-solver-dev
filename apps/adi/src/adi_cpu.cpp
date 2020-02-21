@@ -224,15 +224,15 @@ int main(int argc, char* argv[]) {
     // calculate r.h.s. and set tri-diagonal coefficients
     //
     
-    /*rms("start h_u",h_u, nx_pad, nx, ny, nz);
-    rms("start du", h_du, nx_pad, nx, ny, nz);*/
+    rms("start h_u",h_u, nx_pad, nx, ny, nz);
+    rms("start du", h_du, nx_pad, nx, ny, nz);
     
     timing_start(prof, &timer);
       preproc<FP>(lambda, h_u, h_du, h_ax, h_bx, h_cx, h_ay, h_by, h_cy, h_az, h_bz, h_cz, nx, nx_pad, ny, nz);
     timing_end(prof, &timer, &elapsed_preproc, "preproc");
     
-    /*rms("preproc h_u",h_u, nx_pad, nx, ny, nz);
-    rms("preproc du", h_du, nx_pad, nx, ny, nz);*/
+    rms("preproc h_u",h_u, nx_pad, nx, ny, nz);
+    rms("preproc du", h_du, nx_pad, nx, ny, nz);
     
     //
     // perform tri-diagonal solves in x-direction
@@ -264,7 +264,7 @@ int main(int argc, char* argv[]) {
     
     //print_array_global(h_u, nx, ny, nz, pads[0]);
     
-    _mm_free(h_u);
+    /*_mm_free(h_u);
     _mm_free(h_du);
     _mm_free(h_ax);
     _mm_free(h_bx);
@@ -276,7 +276,7 @@ int main(int argc, char* argv[]) {
     _mm_free(h_bz);
     _mm_free(h_cz);
     
-    exit(0);
+    exit(0);*/
     
     //
     // perform tri-diagonal solves in y-direction
