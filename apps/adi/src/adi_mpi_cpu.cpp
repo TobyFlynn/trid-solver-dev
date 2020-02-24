@@ -284,7 +284,7 @@ int main(int argc, char* argv[]) {
     timers_avg[i] = 0;
   }
   
-#define TIMED
+//#define TIMED
 
   timing_start(&timer1);
   
@@ -303,9 +303,9 @@ int main(int argc, char* argv[]) {
     timing_start(&timer);
     
 #ifdef TIMED
-    tridBatchTimed<FP, INC>(trid_handle, mpi_handle, trid_timing, 0);
+    tridBatchTimed<FP, 0>(trid_handle, mpi_handle, trid_timing, 0);
 #else
-    tridBatch<FP, INC>(trid_handle, mpi_handle, 0);
+    tridBatch<FP, 0>(trid_handle, mpi_handle, 0);
 #endif
     
     timing_end(&timer, &elapsed_trid_x);
@@ -316,9 +316,9 @@ int main(int argc, char* argv[]) {
     timing_start(&timer);
 
 #ifdef TIMED
-    tridBatchTimed<FP, INC>(trid_handle, mpi_handle, trid_timing, 1);
+    tridBatchTimed<FP, 0>(trid_handle, mpi_handle, trid_timing, 1);
 #else
-    tridBatch<FP, INC>(trid_handle, mpi_handle, 1);
+    tridBatch<FP, 0>(trid_handle, mpi_handle, 1);
 #endif
     
     timing_end(&timer, &elapsed_trid_y);
@@ -329,9 +329,9 @@ int main(int argc, char* argv[]) {
     timing_start(&timer);
     
 #ifdef TIMED
-    tridBatchTimed<FP, INC>(trid_handle, mpi_handle, trid_timing, 2);
+    tridBatchTimed<FP, 1>(trid_handle, mpi_handle, trid_timing, 2);
 #else
-    tridBatch<FP, INC>(trid_handle, mpi_handle, 2);
+    tridBatch<FP, 1>(trid_handle, mpi_handle, 2);
 #endif
     
     timing_end(&timer, &elapsed_trid_z);
