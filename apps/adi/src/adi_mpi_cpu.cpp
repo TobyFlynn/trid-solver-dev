@@ -38,6 +38,7 @@
 #include <getopt.h>
 #include <float.h>
 #include <sys/time.h>
+#include <string>
 
 #define FP double
 
@@ -123,49 +124,29 @@ void rms(char* name, FP* array, trid_handle<FP> &handle, trid_mpi_handle &mpi_ha
 
 }
 
-void print_array_global(FP* array, trid_handle<FP> &handle, trid_mpi_handle &mpi_handle) {
-  for(int z = 0; z < handle.size_g[2]; z++) {
-    for(int y = 0; y < handle.size_g[1]; y++) {
-      for(int x = 0; x < mpi_handle.pdims[0]; x++) {
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(x == mpi_handle.coords[0] 
-           && y >= handle.start_g[1] && y <= handle.end_g[1] 
-           && z >= handle.start_g[2] && z <= handle.end_g[2]) {
-          for(int x_l = 0; x_l < handle.size[0]; x_l++) {
-            int y_l = y - handle.start_g[1];
-            int z_l = z - handle.start_g[2];
-            int ind = z_l * handle.pads[1] * handle.pads[0] + y_l * handle.pads[0] + x_l;
-            printf("%.15f ", array[ind]);
-          }
-        }
-      }
-      MPI_Barrier(MPI_COMM_WORLD);
-      if(mpi_handle.rank == 0) {
-        printf("\n");
-      }
-      MPI_Barrier(MPI_COMM_WORLD);
-    }
-  }
-}
 
-/*
-void print_array_onrank(int rank, FP* array, app_handle &app, mpi_handle &mpi) {
-  if(mpi.rank == rank) {
-    printf("On mpi rank %d\n",rank);
-    for(int k=0; k<2; k++) {
-        printf("k = %d\n",k);
-        for(int j=0; j<MIN(app.ny,17); j++) {
-          printf(" %d   ", j);
-          for(int i=0; i<MIN(app.nx,17); i++) {
-            int ind = k*app.nx_pad*app.ny + j*app.nx_pad + i;
-            printf(" %5.5g ", array[ind]);
-          }
-          printf("\n");
-        }
-        printf("\n");
-      }
-  }
-}*/
+void print_array_global(FP* array, trid_handle<FP> &handle, trid_mpi_handle &mpi_handle, int iter) {
+  std::string filename = "mpi-i-" + std::to_string(iter) + ".out";
+  
+  // At the moment will only work if array is not padded
+  MPI_Datatype viewType;
+  int numElements = handle.size[0] * handle.size[1] * handle.size[2];
+  MPI_Type_create_subarray(3, handle.size_g, handle.size, handle.start_g, MPI_ORDER_FORTRAN, MPI_DOUBLE, &viewType);
+  MPI_Type_commit(&viewType);
+  
+  MPI_Datatype arrayType;
+  int coords[3] = {0, 0, 0};
+  MPI_Type_create_subarray(3, handle.size, handle.size, coords, MPI_ORDER_FORTRAN, MPI_DOUBLE, &arrayType);
+  MPI_Type_commit(&arrayType);
+  
+  MPI_File fh;
+  MPI_File_open(mpi_handle.comm, filename.c_str(), MPI_MODE_CREATE|MPI_MODE_WRONLY, MPI_INFO_NULL, &fh);
+  MPI_Offset disp = 0;
+  MPI_File_set_view(fh, disp, MPI_DOUBLE, viewType, "native", MPI_INFO_NULL);
+  MPI_Status status;
+  MPI_File_write_all(fh, array, 1, arrayType, &status);
+  MPI_File_close(&fh);
+}
 
 int init(trid_handle<FP> &trid_handle, trid_mpi_handle &mpi_handle, preproc_handle<FP> &pre_handle, int &iter, int argc, char* argv[]) {
   if( MPI_Init(&argc,&argv) != MPI_SUCCESS) { printf("MPI Couldn't initialize. Exiting"); exit(-1);}
@@ -196,7 +177,7 @@ int init(trid_handle<FP> &trid_handle, trid_mpi_handle &mpi_handle, preproc_hand
   
   tridInit<FP>(trid_handle, mpi_handle, 3, size);
 
-  /*if(mpi_handle.rank==0) {
+  if(mpi_handle.rank==0) {
     printf("\nGlobal grid dimensions: %d x %d x %d\n", 
            trid_handle.size_g[0], trid_handle.size_g[1], trid_handle.size_g[2]);
 
@@ -211,7 +192,11 @@ int init(trid_handle<FP> &trid_handle, trid_mpi_handle &mpi_handle, preproc_hand
   printf("Check parameters: ny = %d, y_start_g = %d, y_end_g = %d \n", 
          trid_handle.size[1], trid_handle.start_g[1], trid_handle.end_g[1]);
   printf("Check parameters: nz = %d, z_start_g = %d, z_end_g = %d \n",
-         trid_handle.size[2], trid_handle.start_g[2], trid_handle.end_g[2]);*/
+         trid_handle.size[2], trid_handle.start_g[2], trid_handle.end_g[2]);
+  
+  if(mpi_handle.rank == 0) {
+    printf("%d %d %d", mpi_handle.pdims[0], mpi_handle.pdims[1], mpi_handle.pdims[2]);
+  }
   
   // Initialize
   for(int k = 0; k < trid_handle.size[2]; k++) {
@@ -339,12 +324,12 @@ int main(int argc, char* argv[]) {
   
   timing_end(&timer1, &elapsed_total);
   
-  /*rms("end h_u", trid_handle.h_u, trid_handle, mpi_handle);
-  rms("end du", trid_handle.du, trid_handle, mpi_handle);*/
+  rms("end h_u", trid_handle.h_u, trid_handle, mpi_handle);
+  rms("end du", trid_handle.du, trid_handle, mpi_handle);
 
   MPI_Barrier(MPI_COMM_WORLD);
   
-  print_array_global(trid_handle.h_u, trid_handle, mpi_handle);
+  print_array_global(trid_handle.h_u, trid_handle, mpi_handle, 0);
   
   /*double avg_total = 0.0;
 

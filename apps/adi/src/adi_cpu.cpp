@@ -47,6 +47,14 @@
   #include "mkl.h"
 #endif
 
+#include <string>
+#include <iostream>
+#include <iomanip>
+#include <fstream>
+#include <limits>
+
+typedef std::numeric_limits< double > dbl;
+
 #ifdef __MIC__ // Or #ifdef __KNC__ - more general option, future proof, __INTEL_OFFLOAD is another option
   __attribute__((target(mic)))
   inline double elapsed_time(double *et);
@@ -104,16 +112,22 @@ void rms(char* name, FP* array, int nx_pad, int nx, int ny, int nz) {
   printf("%s sum = %lg\n", name, sum);
 }
 
-void print_array_global(FP* array, int nx, int ny, int nz, int nx_pad) {
+void print_array_global(FP* array, int nx, int ny, int nz, int nx_pad, int iter) {
+  std::string outFilename = "cpu-i-" + std::to_string(iter) + ".csv";
+  // Write out the file as a csv file
+  std::ofstream outFile;
+  outFile.open(outFilename.c_str());
+  outFile << std::fixed << std::setprecision(dbl::max_digits10);
   for(int z = 0; z < nz; z++) {
     for(int y = 0; y < ny; y++) {
       for(int x = 0; x < nx; x++) {
         int ind = z * ny * nx_pad + y * nx_pad + x;
-        printf("%.15f ", array[ind]);
+        outFile << array[ind] << " ";
       }
-      printf("\n");
+      outFile << "\n";
     }
   }
+  outFile.close();
 }
 
 extern char *optarg;
@@ -281,10 +295,10 @@ int main(int argc, char* argv[]) {
     timing_end(prof, &timer, &elapsed_trid_z, "trid_z");
   }
   
-  print_array_global(h_u, nx, ny, nz, nx_pad);
+  print_array_global(h_u, nx, ny, nz, nx_pad, 0);
   
-  /*rms("end h_u",h_u, nx_pad, nx, ny, nz);
-  rms("end du", h_du, nx_pad, nx, ny, nz);*/
+  rms("end h_u",h_u, nx_pad, nx, ny, nz);
+  rms("end du", h_du, nx_pad, nx, ny, nz);
   
   elapsed = elapsed_time(&timer2);
   elapsed_total = elapsed;
