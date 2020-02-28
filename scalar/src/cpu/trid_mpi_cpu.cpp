@@ -348,7 +348,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
       for(int id = 0; id < handle.n_sys[0]; id++) {
         int ind = id * handle.pads[0];
         thomas_backward<REAL>(&handle.aa[ind], &handle.cc[ind], &handle.dd[ind], 
-                              &handle.h_u[ind], handle.size[0], 1);
+                              &handle.du[ind], handle.size[0], 1);
       }
     }
     
@@ -435,7 +435,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
       for(int z = 0; z < handle.size[2]; z++) {
         int base = z * handle.pads[0] * handle.pads[1];
         thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
-                                        &handle.h_u[base], handle.size[1], handle.pads[0],
+                                        &handle.du[base], handle.size[1], handle.pads[0],
                                         /*handle.size[0]*/ handle.pads[0]);
       }
     }
@@ -536,7 +536,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
       #pragma omp parallel for
       for(int base = 0; base < ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH); base += Z_BATCH) {
         thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
-                                        &handle.h_u[base], handle.size[2], 
+                                        &handle.du[base], handle.size[2], 
                                         handle.pads[0] * handle.pads[1], Z_BATCH);
       }
       
@@ -544,7 +544,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
         int base = ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH);
         int length = (handle.size[1] * handle.pads[0]) - base;
         thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
-                                        &handle.h_u[base], handle.size[2], 
+                                        &handle.du[base], handle.size[2], 
                                         handle.pads[0] * handle.pads[1], length);
       }
     }
@@ -638,7 +638,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       for(int id = 0; id < handle.n_sys[0]; id++) {
         int ind = id * handle.pads[0];
         thomas_backward<REAL>(&handle.aa[ind], &handle.cc[ind], &handle.dd[ind], 
-                              &handle.h_u[ind], handle.size[0], 1);
+                              &handle.du[ind], handle.size[0], 1);
       }
     }
     
@@ -737,7 +737,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       for(int z = 0; z < handle.size[2]; z++) {
         int base = z * handle.pads[0] * handle.pads[1];
         thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
-                                        &handle.h_u[base], handle.size[1], handle.pads[0],
+                                        &handle.du[base], handle.size[1], handle.pads[0],
                                         /*handle.size[0]*/ handle.pads[0]);
       }
     }
@@ -851,7 +851,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       #pragma omp parallel for
       for(int base = 0; base < ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH); base += Z_BATCH) {
         thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
-                                        &handle.h_u[base], handle.size[2], 
+                                        &handle.du[base], handle.size[2], 
                                         handle.pads[0] * handle.pads[1], Z_BATCH);
       }
       
@@ -859,7 +859,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
         int base = ROUND_DOWN(handle.size[1] * handle.pads[0], Z_BATCH);
         int length = (handle.size[1] * handle.pads[0]) - base;
         thomas_backward_vec_strip<REAL>(&handle.aa[base], &handle.cc[base], &handle.dd[base],
-                                        &handle.h_u[base], handle.size[2], 
+                                        &handle.du[base], handle.size[2], 
                                         handle.pads[0] * handle.pads[1], length);
       }
     }

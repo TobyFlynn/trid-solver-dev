@@ -224,15 +224,15 @@ int main(int argc, char* argv[]) {
     // calculate r.h.s. and set tri-diagonal coefficients
     //
     
-    rms("start h_u",h_u, nx_pad, nx, ny, nz);
-    rms("start du", h_du, nx_pad, nx, ny, nz);
+//     rms("start h_u",h_u, nx_pad, nx, ny, nz);
+//     rms("start du", h_du, nx_pad, nx, ny, nz);
     
     timing_start(prof, &timer);
       preproc<FP>(lambda, h_u, h_du, h_ax, h_bx, h_cx, h_ay, h_by, h_cy, h_az, h_bz, h_cz, nx, nx_pad, ny, nz);
     timing_end(prof, &timer, &elapsed_preproc, "preproc");
     
-    rms("preproc h_u",h_u, nx_pad, nx, ny, nz);
-    rms("preproc du", h_du, nx_pad, nx, ny, nz);
+//     rms("preproc h_u",h_u, nx_pad, nx, ny, nz);
+//     rms("preproc du", h_du, nx_pad, nx, ny, nz);
     
     //
     // perform tri-diagonal solves in x-direction
@@ -252,15 +252,15 @@ int main(int argc, char* argv[]) {
 
     int solvedim = 0;   // user chosen dimension for which the solution is performed
     #if FPPREC == 0
-      tridSmtsvStridedBatchInc(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
+      tridSmtsvStridedBatch(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
     #elif FPPREC == 1
-      tridDmtsvStridedBatchInc(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
+      tridDmtsvStridedBatch(h_ax, h_bx, h_cx, h_du, h_u, ndim, solvedim, dims, pads);
     #endif
 
     timing_end(prof, &timer, &elapsed_trid_x, "trid_x");
     
-    rms("x h_u",h_u, nx_pad, nx, ny, nz);
-    rms("x du", h_du, nx_pad, nx, ny, nz);
+//     rms("x h_u",h_u, nx_pad, nx, ny, nz);
+//     rms("x du", h_du, nx_pad, nx, ny, nz);
     
     //print_array_global(h_u, nx, ny, nz, pads[0]);
     
@@ -285,15 +285,15 @@ int main(int argc, char* argv[]) {
 
     solvedim = 1;   // user chosen dimension for which the solution is performed
     #if FPPREC == 0
-      tridSmtsvStridedBatchInc(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
+      tridSmtsvStridedBatch(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
     #elif FPPREC == 1
-      tridDmtsvStridedBatchInc(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
+      tridDmtsvStridedBatch(h_ay, h_by, h_cy, h_du, h_u, ndim, solvedim, dims, pads);
     #endif
     
     timing_end(prof, &timer, &elapsed_trid_y, "trid_y");
     
-    rms("y h_u",h_u, nx_pad, nx, ny, nz);
-    rms("y du", h_du, nx_pad, nx, ny, nz);
+//     rms("y h_u",h_u, nx_pad, nx, ny, nz);
+//     rms("y du", h_du, nx_pad, nx, ny, nz);
 
     //
     // perform tridiagonal solves in z-direction

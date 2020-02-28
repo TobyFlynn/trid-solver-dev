@@ -170,13 +170,13 @@ int init(trid_handle<FP> &trid_handle, trid_mpi_handle &mpi_handle, preproc_hand
   
   tridInit<FP>(trid_handle, mpi_handle, 3, size);
 
-  /*if(mpi_handle.rank==0) {
+  if(mpi_handle.rank==0) {
     printf("\nGlobal grid dimensions: %d x %d x %d\n", 
            trid_handle.size_g[0], trid_handle.size_g[1], trid_handle.size_g[2]);
 
     printf("\nNumber of MPI procs in each dimenstion %d, %d, %d\n",
            mpi_handle.pdims[0], mpi_handle.pdims[1], mpi_handle.pdims[2]);
-  }*/
+  }
 /*
   printf("Check parameters: SIMD_WIDTH = %d, sizeof(FP) = %d\n", SIMD_WIDTH, sizeof(FP));
   printf("Check parameters: nx_pad (padded) = %d\n", trid_handle.pads[0]);
@@ -249,7 +249,7 @@ int main(int argc, char* argv[]) {
 
   char elapsed_name[5][256] = {"forward","bound_pack","all_gather","reduced","backward"};
   
-  double timers_max[5];
+  double timers_avg[5];
 
   for(int i = 0; i < 4; i++) {
     trid_timing.elapsed_time_x[i] = 0.0;
@@ -279,9 +279,9 @@ int main(int argc, char* argv[]) {
     timing_start(&timer);
     
 #ifdef TIMED
-    tridBatchTimed<FP, INC>(trid_handle, mpi_handle, trid_timing, 0);
+    tridBatchTimed<FP, 0>(trid_handle, mpi_handle, trid_timing, 0);
 #else
-    tridBatch<FP, INC>(trid_handle, mpi_handle, 0);
+    tridBatch<FP, 0>(trid_handle, mpi_handle, 0);
 #endif
     
     timing_end(&timer, &elapsed_trid_x);
@@ -292,9 +292,9 @@ int main(int argc, char* argv[]) {
     timing_start(&timer);
 
 #ifdef TIMED
-    tridBatchTimed<FP, INC>(trid_handle, mpi_handle, trid_timing, 1);
+    tridBatchTimed<FP, 0>(trid_handle, mpi_handle, trid_timing, 1);
 #else
-    tridBatch<FP, INC>(trid_handle, mpi_handle, 1);
+    tridBatch<FP, 0>(trid_handle, mpi_handle, 1);
 #endif
     
     timing_end(&timer, &elapsed_trid_y);
@@ -305,9 +305,9 @@ int main(int argc, char* argv[]) {
     timing_start(&timer);
     
 #ifdef TIMED
-    tridBatchTimed<FP, INC>(trid_handle, mpi_handle, trid_timing, 2);
+    tridBatchTimed<FP, 1>(trid_handle, mpi_handle, trid_timing, 2);
 #else
-    tridBatch<FP, INC>(trid_handle, mpi_handle, 2);
+    tridBatch<FP, 1>(trid_handle, mpi_handle, 2);
 #endif
     
     timing_end(&timer, &elapsed_trid_z);
@@ -322,112 +322,80 @@ int main(int argc, char* argv[]) {
   
 #ifdef TIMED
   
-  double max_total = 0.0;
+  double avg_total = 0.0;
 
-  MPI_Reduce(trid_timing.elapsed_time_x, timers_max, 4, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&elapsed_trid_x, &max_total, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+  MPI_Reduce(trid_timing.elapsed_time_x, timers_avg, 4, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+  MPI_Reduce(&elapsed_trid_x, &avg_total, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   
-  for(int i=0; i<mpi_handle.procs; i++) {
-    MPI_Barrier(MPI_COMM_WORLD);
-    //sleep(0.2);
-    if(i==mpi_handle.rank) {
-      if(mpi_handle.rank==0) {
-        printf("Time in trid-x segments[s]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s]\n",
-            elapsed_name[0], elapsed_name[2], elapsed_name[3], elapsed_name[4]);
-      }
-      printf("%lf \t%lf \t%lf \t%lf \t%lf\n",
-      1000.0*elapsed_trid_x ,
-      1000.0*trid_timing.elapsed_time_x[0],
-      1000.0*trid_timing.elapsed_time_x[1],
-      1000.0*trid_timing.elapsed_time_x[2],
-      1000.0*trid_timing.elapsed_time_x[3]);
-    }
+  if(mpi_handle.rank == 0) {
+    for(int i = 0; i < 4; i++)
+        timers_avg[i] /= mpi_handle.procs;
+    
+    avg_total /= mpi_handle.procs;
   }
   
   MPI_Barrier(MPI_COMM_WORLD);
   
   if(mpi_handle.rank == 0) {
-    printf("Max time in trid-x segments[s]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s]\n",
+    printf("Avg time in trid-x segments[s]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s]\n",
             elapsed_name[0], elapsed_name[2], elapsed_name[3], elapsed_name[4]);
     printf("%lf \t%lf \t%lf \t%lf \t%lf\n",
-        1000.0*max_total ,
-        1000.0*timers_max[0],
-        1000.0*timers_max[1],
-        1000.0*timers_max[2],
-        1000.0*timers_max[3]);
+        1000.0*avg_total ,
+        1000.0*timers_avg[0],
+        1000.0*timers_avg[1],
+        1000.0*timers_avg[2],
+        1000.0*timers_avg[3]);
   }
   
   MPI_Barrier(MPI_COMM_WORLD);
   
-  MPI_Reduce(trid_timing.elapsed_time_y, timers_max, 5, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&elapsed_trid_y, &max_total, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+  MPI_Reduce(trid_timing.elapsed_time_y, timers_avg, 5, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+  MPI_Reduce(&elapsed_trid_y, &avg_total, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   
-  for(int i=0; i<mpi_handle.procs; i++) {
-    MPI_Barrier(MPI_COMM_WORLD);
-    //sleep(0.2);
-    if(i==mpi_handle.rank) {
-      if(mpi_handle.rank==0) {
-        printf("Time in trid-y segments[s]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s]\n",
-            elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4]);
-      }
-      printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
-      1000.0*elapsed_trid_y ,
-      1000.0*trid_timing.elapsed_time_y[0],
-      1000.0*trid_timing.elapsed_time_y[1],
-      1000.0*trid_timing.elapsed_time_y[2],
-      1000.0*trid_timing.elapsed_time_y[3],
-      1000.0*trid_timing.elapsed_time_y[4]);
-    }
+  if(mpi_handle.rank == 0) {
+    for(int i = 0; i < 5; i++)
+        timers_avg[i] /= mpi_handle.procs;
+    
+    avg_total /= mpi_handle.procs;
   }
   
   MPI_Barrier(MPI_COMM_WORLD);
   
   if(mpi_handle.rank == 0) {
-    printf("Max time in trid-y segments[s]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s]\n",
+    printf("Avg time in trid-y segments[s]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s]\n",
             elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4]);
     printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
-        1000.0*max_total ,
-        1000.0*timers_max[0],
-        1000.0*timers_max[1],
-        1000.0*timers_max[2],
-        1000.0*timers_max[3],
-        1000.0*timers_max[4]);
+        1000.0*avg_total ,
+        1000.0*timers_avg[0],
+        1000.0*timers_avg[1],
+        1000.0*timers_avg[2],
+        1000.0*timers_avg[3],
+        1000.0*timers_avg[4]);
   }
   
   MPI_Barrier(MPI_COMM_WORLD);
   
-  MPI_Reduce(trid_timing.elapsed_time_z, timers_max, 5, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&elapsed_trid_z, &max_total, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+  MPI_Reduce(trid_timing.elapsed_time_z, timers_avg, 5, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+  MPI_Reduce(&elapsed_trid_z, &avg_total, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   
-  for(int i=0; i<mpi_handle.procs; i++) {
-    MPI_Barrier(MPI_COMM_WORLD);
-    //sleep(0.2);
-    if(i==mpi_handle.rank) {
-      if(mpi_handle.rank==0) {
-        printf("Time in trid-z segments[s]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s]\n",
-            elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4]);
-      }
-      printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
-      1000.0*elapsed_trid_z ,
-      1000.0*trid_timing.elapsed_time_z[0],
-      1000.0*trid_timing.elapsed_time_z[1],
-      1000.0*trid_timing.elapsed_time_z[2],
-      1000.0*trid_timing.elapsed_time_z[3],
-      1000.0*trid_timing.elapsed_time_z[4]);
-    }
+  if(mpi_handle.rank == 0) {
+    for(int i = 0; i < 5; i++)
+        timers_avg[i] /= mpi_handle.procs;
+    
+    avg_total /= mpi_handle.procs;
   }
   
   MPI_Barrier(MPI_COMM_WORLD);
   if(mpi_handle.rank == 0) {
-    printf("Max time in trid-z segments[s]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s]\n",
+    printf("Avg time in trid-z segments[s]: \n[total] \t[%s] \t[%s] \t[%s] \t[%s] \t[%s]\n",
             elapsed_name[0], elapsed_name[1], elapsed_name[2], elapsed_name[3], elapsed_name[4]);
     printf("%lf \t%lf \t%lf \t%lf \t%lf \t%lf\n",
-        1000.0*max_total ,
-        1000.0*timers_max[0],
-        1000.0*timers_max[1],
-        1000.0*timers_max[2],
-        1000.0*timers_max[3],
-        1000.0*timers_max[4]);
+        1000.0*avg_total ,
+        1000.0*timers_avg[0],
+        1000.0*timers_avg[1],
+        1000.0*timers_avg[2],
+        1000.0*timers_avg[3],
+        1000.0*timers_avg[4]);
   }
   
 #endif
