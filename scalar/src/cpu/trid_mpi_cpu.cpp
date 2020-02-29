@@ -321,7 +321,6 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Unpack each reduced system and solve it
     // Place result back into dd array, ready for backwards pass
-    #pragma omp parallel for
     for(int id = 0; id < handle.n_sys[0]; id++) {
       // Get this reduced system
       for(int p = 0; p < mpi_handle.pdims[0]; p++) {
@@ -406,7 +405,6 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Unpack each reduced system and solve it
     // Place result back into dd array, ready for backwards pass
-    #pragma omp parallel for
     for(int id = 0; id < handle.n_sys[1]; id++) {
       // Get this reduced system
       for(int p = 0; p < mpi_handle.pdims[1]; p++) {
@@ -501,7 +499,6 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Unpack each reduced system and solve it
     // Place result back into dd array, ready for backwards pass
-    #pragma omp parallel for
     for(int id = 0; id < handle.n_sys[2]; id++) {
       // Get this reduced system
       for(int p = 0; p < mpi_handle.pdims[2]; p++) {
@@ -590,12 +587,6 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       handle.sndbuf[sndbuf_ind + 5] = handle.dd[ind + handle.size[0] - 1];
     }
     
-    rms("aa", handle.aa, handle, mpi_handle);
-    rms("cc", handle.cc, handle, mpi_handle);
-    rms("dd", handle.dd, handle, mpi_handle);
-    
-    rmsL("sndbuf", handle.sndbuf, handle, mpi_handle, handle.n_sys[0] * 2 * 3);
-    
     timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[0]);
     
     // Don't time forward pass and packing data separately for x dim
@@ -611,13 +602,10 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                     mpi_handle.x_comm);
     }
     
-    rmsL("rcvbuf", handle.rcvbuf, handle, mpi_handle, mpi_handle.pdims[0] * handle.n_sys[0] * 2 * 3);
-    
     timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[1]);
     
     // Unpack each reduced system and solve it
     // Place result back into dd array, ready for backwards pass
-    #pragma omp parallel for
     for(int id = 0; id < handle.n_sys[0]; id++) {
       // Get this reduced system
       for(int p = 0; p < mpi_handle.pdims[0]; p++) {
@@ -640,9 +628,6 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       handle.dd[trid_ind + handle.size[0] - 1] = handle.dd_r[mpi_handle.coords[0] * 2 + 1];
     }
     
-    rms("dd", handle.dd, handle, mpi_handle);
-    rms("du", handle.du, handle, mpi_handle);
-    
     timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[2]);
     
     // Backwards pass of modified Thomas algorithm
@@ -661,8 +646,6 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                               &handle.du[ind], handle.size[0], 1);
       }
     }
-    
-    rms("du", handle.du, handle, mpi_handle);
     
     timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[3]);
     
@@ -719,7 +702,6 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     
     // Unpack each reduced system and solve it
     // Place result back into dd array, ready for backwards pass
-    #pragma omp parallel for
     for(int id = 0; id < handle.n_sys[1]; id++) {
       // Get this reduced system
       for(int p = 0; p < mpi_handle.pdims[1]; p++) {
@@ -827,7 +809,6 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
     
     // Unpack each reduced system and solve it
     // Place result back into dd array, ready for backwards pass
-    #pragma omp parallel for
     for(int id = 0; id < handle.n_sys[2]; id++) {
       // Get this reduced system
       for(int p = 0; p < mpi_handle.pdims[2]; p++) {

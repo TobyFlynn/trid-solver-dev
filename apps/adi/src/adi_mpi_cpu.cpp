@@ -266,18 +266,12 @@ int main(int argc, char* argv[]) {
   
   for(int it = 0; it < iter; it++) {
     
-    rms("start h_u", trid_handle.h_u, trid_handle, mpi_handle);
-    rms("start du", trid_handle.du, trid_handle, mpi_handle);
-    
     timing_start(&timer);
     
     preproc_mpi<FP>(pre_handle, trid_handle.h_u, trid_handle.du, trid_handle.a,
                     trid_handle.b, trid_handle.c, trid_handle, mpi_handle);
     
     timing_end(&timer, &elapsed_preproc);
-
-    rms("preproc h_u", trid_handle.h_u, trid_handle, mpi_handle);
-    rms("preproc du", trid_handle.du, trid_handle, mpi_handle);
     
     //
     // perform tri-diagonal solves in x-direction
@@ -292,9 +286,6 @@ int main(int argc, char* argv[]) {
     
     timing_end(&timer, &elapsed_trid_x);
     
-    rms("x h_u", trid_handle.h_u, trid_handle, mpi_handle);
-    rms("x du", trid_handle.du, trid_handle, mpi_handle);
-    
     //
     // perform tri-diagonal solves in y-direction
     //
@@ -307,9 +298,6 @@ int main(int argc, char* argv[]) {
 #endif
     
     timing_end(&timer, &elapsed_trid_y);
-    
-    rms("y h_u", trid_handle.h_u, trid_handle, mpi_handle);
-    rms("y du", trid_handle.du, trid_handle, mpi_handle);
     
     //
     // perform tri-diagonal solves in z-direction
