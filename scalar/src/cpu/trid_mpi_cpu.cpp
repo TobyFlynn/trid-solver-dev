@@ -121,6 +121,15 @@ void rmsL(char* name, const REAL* array, trid_handle<REAL> &handle, trid_mpi_han
     //sum += array[ind]*array[ind];
     sum += array[k];
   }
+  
+  double global_sum = 0.0;
+  MPI_Allreduce(&sum, &global_sum,1, MPI_DOUBLE,MPI_SUM, mpi_handle.comm);
+
+  if(mpi_handle.rank ==0) {
+    printf("%s sum = %.15lg\n", name, global_sum);
+    //printf("%s rms = %2.15lg\n",name, sqrt(global_sum)/((double)(app.nx_g*app.ny_g*app.nz_g)));
+  }
+  
   //if(sum != 0.0)
   //printf("Coord %d, %d, %d: %s sum = %.15lg\n", mpi_handle.coords[0], mpi_handle.coords[1], mpi_handle.coords[2], name, sum);
 
@@ -581,6 +590,12 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       handle.sndbuf[sndbuf_ind + 5] = handle.dd[ind + handle.size[0] - 1];
     }
     
+    rms("aa", handle.aa, handle, mpi_handle);
+    rms("cc", handle.cc, handle, mpi_handle);
+    rms("dd", handle.dd, handle, mpi_handle);
+    
+    rmsL("sndbuf", handle.sndbuf, handle, mpi_handle, handle.n_sys[0] * 2 * 3);
+    
     timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[0]);
     
     // Don't time forward pass and packing data separately for x dim
@@ -595,6 +610,8 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                     handle.rcvbuf, handle.n_sys[0] * 2 * 3, MPI_DOUBLE, 
                     mpi_handle.x_comm);
     }
+    
+    rmsL("rcvbuf", handle.rcvbuf, handle, mpi_handle, mpi_handle.pdims[0] * handle.n_sys[0] * 2 * 3);
     
     timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[1]);
     
@@ -623,6 +640,9 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       handle.dd[trid_ind + handle.size[0] - 1] = handle.dd_r[mpi_handle.coords[0] * 2 + 1];
     }
     
+    rms("dd", handle.dd, handle, mpi_handle);
+    rms("du", handle.du, handle, mpi_handle);
+    
     timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[2]);
     
     // Backwards pass of modified Thomas algorithm
@@ -641,6 +661,8 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                               &handle.du[ind], handle.size[0], 1);
       }
     }
+    
+    rms("du", handle.du, handle, mpi_handle);
     
     timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[3]);
     
