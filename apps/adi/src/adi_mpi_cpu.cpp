@@ -178,14 +178,14 @@ int init(trid_handle<FP> &trid_handle, trid_mpi_handle &mpi_handle, preproc_hand
            mpi_handle.pdims[0], mpi_handle.pdims[1], mpi_handle.pdims[2]);
   }
 
-  printf("Check parameters: SIMD_WIDTH = %d, sizeof(FP) = %d\n", SIMD_WIDTH, sizeof(FP));
+  /*printf("Check parameters: SIMD_WIDTH = %d, sizeof(FP) = %d\n", SIMD_WIDTH, sizeof(FP));
   printf("Check parameters: nx_pad (padded) = %d\n", trid_handle.pads[0]);
   printf("Check parameters: nx = %d, x_start_g = %d, x_end_g = %d \n", 
          trid_handle.size[0], trid_handle.start_g[0], trid_handle.end_g[0]);
   printf("Check parameters: ny = %d, y_start_g = %d, y_end_g = %d \n", 
          trid_handle.size[1], trid_handle.start_g[1], trid_handle.end_g[1]);
   printf("Check parameters: nz = %d, z_start_g = %d, z_end_g = %d \n",
-         trid_handle.size[2], trid_handle.start_g[2], trid_handle.end_g[2]);
+         trid_handle.size[2], trid_handle.start_g[2], trid_handle.end_g[2]);*/
   
   // Initialize
   for(int k = 0; k < trid_handle.size[2]; k++) {
