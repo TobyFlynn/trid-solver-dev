@@ -61,11 +61,27 @@ inline double elapsed_time(double *et) {
   return *et - old_time;
 }
 
-inline void timing_start(double *timer) {
+inline void timing_start(double *timer, trid_mpi_handle &mpi_handle, int dim) {
+  if(dim == 0) {
+    MPI_Barrier(mpi_handle.x_comm);
+  } else if(dim == 1) {
+    MPI_Barrier(mpi_handle.y_comm);
+  } else {
+    MPI_Barrier(mpi_handle.z_comm);
+  }
+  
   elapsed_time(timer);
 }
 
-inline void timing_end(double *timer, double *elapsed_accumulate) {
+inline void timing_end(double *timer, double *elapsed_accumulate, trid_mpi_handle &mpi_handle, int dim) {
+  if(dim == 0) {
+    MPI_Barrier(mpi_handle.x_comm);
+  } else if(dim == 1) {
+    MPI_Barrier(mpi_handle.y_comm);
+  } else {
+    MPI_Barrier(mpi_handle.z_comm);
+  }
+  
   double elapsed = elapsed_time(timer);
   *elapsed_accumulate += elapsed;
 }
@@ -567,7 +583,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
      * 
      *********************/
     
-    timing_start(&timer_handle.timer);
+    timing_start(&timer_handle.timer, mpi_handle, 0);
     
     // Forward pass of modified Thomas algorithm
     // Pack boundary data into send buffer after each solve
@@ -587,7 +603,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       handle.sndbuf[sndbuf_ind + 5] = handle.dd[ind + handle.size[0] - 1];
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[0]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[0], mpi_handle, 0);
     
     // Don't time forward pass and packing data separately for x dim
     
@@ -602,7 +618,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                     mpi_handle.x_comm);
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[1]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[1], mpi_handle, 0);
     
     // Unpack each reduced system and solve it
     // Place result back into dd array, ready for backwards pass
@@ -628,7 +644,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       handle.dd[trid_ind + handle.size[0] - 1] = handle.dd_r[mpi_handle.coords[0] * 2 + 1];
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[2]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[2], mpi_handle, 0);
     
     // Backwards pass of modified Thomas algorithm
     if(INC) {
@@ -647,7 +663,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       }
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[3]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_x[3], mpi_handle, 0);
     
   } else if(solveDim == 1) {
     /*********************
@@ -656,7 +672,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
      * 
      *********************/
     
-    timing_start(&timer_handle.timer);
+    timing_start(&timer_handle.timer, mpi_handle, 1);
     
     // Do modified Thomas forward pass
     #pragma omp parallel for
@@ -668,7 +684,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                                handle.pads[0], /*handle.size[0]*/ handle.pads[0]);
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[0]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[0], mpi_handle, 1);
     
     // Pack boundary values
     #pragma omp parallel for
@@ -685,7 +701,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       handle.sndbuf[sndbuf_ind + 5] = handle.dd[end];
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[1]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[1], mpi_handle, 1);
     
     // Send boundary data to all MPI processes along this dimension
     if(std::is_same<REAL, float>::value) {
@@ -698,7 +714,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                     mpi_handle.y_comm);
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[2]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[2], mpi_handle, 1);
     
     // Unpack each reduced system and solve it
     // Place result back into dd array, ready for backwards pass
@@ -725,7 +741,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       handle.dd[trid_end]   = handle.dd_r[mpi_handle.coords[1] * 2 + 1];
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[3]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[3], mpi_handle, 1);
     
     // Backwards pass of modified Thomas algorithm
     if(INC) {
@@ -746,7 +762,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       }
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[4]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_y[4], mpi_handle, 1);
     
   } else {
     /*********************
@@ -755,7 +771,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
      * 
      *********************/
     
-    timing_start(&timer_handle.timer);
+    timing_start(&timer_handle.timer, mpi_handle, 2);
     
     // Do modified Thomas forward pass
     #pragma omp parallel for
@@ -775,7 +791,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                                handle.pads[0] * handle.pads[1], length);
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[0]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[0], mpi_handle, 2);
     
     // Pack boundary values
     #pragma omp parallel for
@@ -792,7 +808,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       handle.sndbuf[sndbuf_ind + 5] = handle.dd[end];
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[1]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[1], mpi_handle, 2);
     
     // Send boundary data to all MPI processes along this dimension
     if(std::is_same<REAL, float>::value) {
@@ -805,7 +821,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
                     mpi_handle.z_comm);
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[2]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[2], mpi_handle, 2);
     
     // Unpack each reduced system and solve it
     // Place result back into dd array, ready for backwards pass
@@ -832,7 +848,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       handle.dd[trid_end]   = handle.dd_r[mpi_handle.coords[2] * 2 + 1];
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[3]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[3], mpi_handle, 2);
     
     // Do the backward pass of modified Thomas
     if(INC) {
@@ -867,7 +883,7 @@ void tridBatchTimed(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle,
       }
     }
     
-    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[4]);
+    timing_end(&timer_handle.timer, &timer_handle.elapsed_time_z[4], mpi_handle, 2);
     
   }
 }
