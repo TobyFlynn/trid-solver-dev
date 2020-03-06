@@ -257,8 +257,6 @@ int main(int argc, char* argv[]) {
     trid_timing.elapsed_time_z[i] = 0.0;
     timers_avg[i] = 0;
   }
-  
-#define TIMED
 
   timing_start(&timer1);
   
@@ -318,6 +316,7 @@ int main(int argc, char* argv[]) {
 
   MPI_Barrier(MPI_COMM_WORLD);
   
+#ifdef TIMED
   double avg_total = 0.0;
 
   MPI_Reduce(trid_timing.elapsed_time_x, timers_avg, 11, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
@@ -487,7 +486,7 @@ int main(int argc, char* argv[]) {
         1000.0*timers_avg[7],
         1000.0*timers_avg[8]);
   }
-  
+#endif
   MPI_Barrier(MPI_COMM_WORLD);
   if(mpi_handle.rank == 0) {
     // Print execution times
