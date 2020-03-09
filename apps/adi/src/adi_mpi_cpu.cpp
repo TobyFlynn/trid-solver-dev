@@ -258,7 +258,7 @@ int main(int argc, char* argv[]) {
     timers_avg[i] = 0;
   }
   
-#define TIMED
+//#define TIMED
 
   timing_start(&timer1);
   
