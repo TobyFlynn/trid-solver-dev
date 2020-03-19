@@ -219,10 +219,11 @@ void tridInit(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int ndim, 
   handle.halo_rcvbuf = (REAL *) _mm_malloc(max * 3 * sizeof(REAL), SIMD_WIDTH);
   
   // Allocate memory for reduced system arrays
+  int num_threads = omp_get_num_threads();
   max = 0;
   for(int i = 0; i < handle.ndim; i++) {
     if(handle.sys_len_l[i] * handle.n_sys_l[i] > max) {
-      max = handle.sys_len_l[i] * handle.n_sys_l[i];
+      max = handle.sys_len_l[i] * num_threads;
     }
   }
   
@@ -301,56 +302,27 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Unpack boundary values
     if(mpi_handle.coords[0] == 0) {
-      /*#pragma omp parallel for collapse(2)
-      for(int p = 0; p < mpi_handle.pdims[0]; p++) {
-        for(int id = 0; id < handle.n_sys_l[0]; id++) {
-          int halo_base = p * handle.n_sys_l[0] * 6 + id * 6;
-          int data_base = id * handle.sys_len_l[0] + p * 2;
-          handle.aa_r[data_base]     = handle.halo_rcvbuf[halo_base];
-          handle.aa_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 1];
-          handle.cc_r[data_base]     = handle.halo_rcvbuf[halo_base + 2];
-          handle.cc_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 3];
-          handle.dd_r[data_base]     = handle.halo_rcvbuf[halo_base + 4];
-          handle.dd_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 5];
-        }
-      }
-      
       #pragma omp parallel for
       for(int id = 0; id < handle.n_sys_l[0]; id++) {
-        int base = id * handle.sys_len_l[0];
-        thomas_on_reduced<REAL>(&handle.aa_r[base], &handle.cc_r[base], &handle.dd_r[base],
-                          handle.sys_len_l[0], 1);
-      }
-      
-      #pragma omp parallel for
-      for(int p = 0; p < mpi_handle.pdims[0]; p++) {
-        for(int id = 0; id < handle.n_sys_l[0]; id++) {
-          int halo_base = p * handle.n_sys_l[0] * 2 + id * 2;
-          int data_base = id * handle.sys_len_l[0] + p * 2;
-          handle.halo_rcvbuf[halo_base]     = handle.dd_r[data_base];
-          handle.halo_rcvbuf[halo_base + 1] = handle.dd_r[data_base + 1];
-        }
-      }*/
-      for(int id = 0; id < handle.n_sys_l[0]; id++) {
+        int thread_ind = omp_get_thread_num() * handle.sys_len_l[0];
         for(int p = 0; p < mpi_handle.pdims[0]; p++) {
           int rcvbuf_ind = p * handle.n_sys_l[0] * 2 * 3;
-          handle.aa_r[p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6];
-          handle.aa_r[p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 1];
-          handle.cc_r[p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 2];
-          handle.cc_r[p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 3];
-          handle.dd_r[p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 4];
-          handle.dd_r[p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 5];
+          handle.aa_r[thread_ind + p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6];
+          handle.aa_r[thread_ind + p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 1];
+          handle.cc_r[thread_ind + p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 2];
+          handle.cc_r[thread_ind + p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 3];
+          handle.dd_r[thread_ind + p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 4];
+          handle.dd_r[thread_ind + p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 5];
         }
         
         // Solve reduced system
-        int ind = id * handle.sys_len_l[0];
-        thomas_on_reduced<REAL>(handle.aa_r, handle.cc_r, handle.dd_r, handle.sys_len_l[0], 1);
+        thomas_on_reduced<REAL>(handle.aa_r[thread_ind], handle.cc_r[thread_ind], handle.dd_r[thread_ind], handle.sys_len_l[0], 1);
         
         // Place result back into dd array
         for(int p = 0; p < mpi_handle.pdims[0]; p++) {
-          int rcvbuf_ind = p * handle.n_sys_l[0] * 2;
-          handle.halo_sndbuf[rcvbuf_ind + id * 2]     = handle.dd_r[p * 2];
-          handle.halo_sndbuf[rcvbuf_ind + id * 2 + 1] = handle.dd_r[p * 2 + 1];
+          int sndbuf_ind = p * handle.n_sys_l[0] * 2;
+          handle.halo_sndbuf[sndbuf_ind + id * 2]     = handle.dd_r[thread_ind + p * 2];
+          handle.halo_sndbuf[sndbuf_ind + id * 2 + 1] = handle.dd_r[thread_ind + p * 2 + 1];
         }
       }
     }
@@ -433,56 +405,28 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Unpack boundary values
     if(mpi_handle.coords[1] == 0) {
-      /*#pragma omp parallel for collapse(2)
-      for(int p = 0; p < mpi_handle.pdims[1]; p++) {
-        for(int id = 0; id < handle.n_sys_l[1]; id++) {
-          int halo_base = p * handle.n_sys_l[1] * 6 + id * 6;
-          int data_base = id * handle.sys_len_l[1] + p * 2;
-          handle.aa_r[data_base]     = handle.halo_rcvbuf[halo_base];
-          handle.aa_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 1];
-          handle.cc_r[data_base]     = handle.halo_rcvbuf[halo_base + 2];
-          handle.cc_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 3];
-          handle.dd_r[data_base]     = handle.halo_rcvbuf[halo_base + 4];
-          handle.dd_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 5];
-        }
-      }
-      
       #pragma omp parallel for
       for(int id = 0; id < handle.n_sys_l[1]; id++) {
-        int base = id * handle.sys_len_l[1];
-        thomas_on_reduced<REAL>(&handle.aa_r[base], &handle.cc_r[base], &handle.dd_r[base],
-                                 handle.sys_len_l[1], 1);
-      }
-      
-      #pragma omp parallel for
-      for(int p = 0; p < mpi_handle.pdims[1]; p++) {
-        for(int id = 0; id < handle.n_sys_l[1]; id++) {
-          int halo_base = p * handle.n_sys_l[1] * 2 + id * 2;
-          int data_base = id * handle.sys_len_l[1] + p * 2;
-          handle.halo_rcvbuf[halo_base]     = handle.dd_r[data_base];
-          handle.halo_rcvbuf[halo_base + 1] = handle.dd_r[data_base + 1];
-        }
-      }*/
-      for(int id = 0; id < handle.n_sys_l[1]; id++) {
+        int thread_ind = omp_get_thread_num() * handle.sys_len_l[1];
         for(int p = 0; p < mpi_handle.pdims[1]; p++) {
           int rcvbuf_ind = p * handle.n_sys_l[1] * 2 * 3;
-          handle.aa_r[p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6];
-          handle.aa_r[p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 1];
-          handle.cc_r[p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 2];
-          handle.cc_r[p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 3];
-          handle.dd_r[p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 4];
-          handle.dd_r[p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 5];
+          handle.aa_r[thread_ind + p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6];
+          handle.aa_r[thread_ind + p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 1];
+          handle.cc_r[thread_ind + p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 2];
+          handle.cc_r[thread_ind + p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 3];
+          handle.dd_r[thread_ind + p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 4];
+          handle.dd_r[thread_ind + p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 5];
         }
         
         // Solve reduced system
         int ind = id * handle.sys_len_l[1];
-        thomas_on_reduced<REAL>(handle.aa_r, handle.cc_r, handle.dd_r, handle.sys_len_l[1], 1);
+        thomas_on_reduced<REAL>(handle.aa_r[thread_ind], handle.cc_r[thread_ind], handle.dd_r[thread_ind], handle.sys_len_l[1], 1);
         
         // Place result back into dd array
         for(int p = 0; p < mpi_handle.pdims[1]; p++) {
-          int rcvbuf_ind = p * handle.n_sys_l[1] * 2;
-          handle.halo_sndbuf[rcvbuf_ind + id * 2]     = handle.dd_r[p * 2];
-          handle.halo_sndbuf[rcvbuf_ind + id * 2 + 1] = handle.dd_r[p * 2 + 1];
+          int sndbuf_ind = p * handle.n_sys_l[1] * 2;
+          handle.halo_sndbuf[sndbuf_ind + id * 2]     = handle.dd_r[thread_ind + p * 2];
+          handle.halo_sndbuf[sndbuf_ind + id * 2 + 1] = handle.dd_r[thread_ind + p * 2 + 1];
         }
       }
     }
@@ -575,55 +519,28 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
     
     // Unpack boundary data
     if(mpi_handle.coords[2] == 0) {
-      /*#pragma omp parallel for collapse(2)
-      for(int p = 0; p < mpi_handle.pdims[2]; p++) {
-        for(int id = 0; id < handle.n_sys_l[2]; id++) {
-          int data_base = id * handle.sys_len_l[2] + p * 2;
-          int halo_base = p * handle.n_sys_l[2] * 6 + id * 6;
-          handle.aa_r[data_base]     = handle.halo_rcvbuf[halo_base];
-          handle.aa_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 1];
-          handle.cc_r[data_base]     = handle.halo_rcvbuf[halo_base + 2];
-          handle.cc_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 3];
-          handle.dd_r[data_base]     = handle.halo_rcvbuf[halo_base + 4];
-          handle.dd_r[data_base + 1] = handle.halo_rcvbuf[halo_base + 5];
-        }
-      }
-
       #pragma omp parallel for
       for(int id = 0; id < handle.n_sys_l[2]; id++) {
-        int base = id * handle.sys_len_l[2];
-        thomas_on_reduced<REAL>(&handle.aa_r[base], &handle.cc_r[base], &handle.dd_r[base],
-                                 handle.sys_len_l[2], 1);
-      }
-
-      #pragma omp parallel for
-      for(int p = 0; p < mpi_handle.pdims[2]; p++) {
-        for(int id = 0; id < handle.n_sys_l[2]; id++) {
-          int halo_base = p * handle.n_sys_l[2] * 2 + id * 2;
-          int data_base = id * handle.sys_len_l[2] + p * 2;
-          handle.halo_rcvbuf[halo_base]     = handle.dd_r[data_base];
-          handle.halo_rcvbuf[halo_base + 1] = handle.dd_r[data_base + 1];
-        }*/
-      for(int id = 0; id < handle.n_sys_l[2]; id++) {
+        int thread_ind = omp_get_thread_num() * handle.sys_len_l[2];
         for(int p = 0; p < mpi_handle.pdims[2]; p++) {
           int rcvbuf_ind = p * handle.n_sys_l[2] * 2 * 3;
-          handle.aa_r[p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6];
-          handle.aa_r[p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 1];
-          handle.cc_r[p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 2];
-          handle.cc_r[p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 3];
-          handle.dd_r[p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 4];
-          handle.dd_r[p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 5];
+          handle.aa_r[thread_ind + p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6];
+          handle.aa_r[thread_ind + p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 1];
+          handle.cc_r[thread_ind + p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 2];
+          handle.cc_r[thread_ind + p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 3];
+          handle.dd_r[thread_ind + p * 2]     = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 4];
+          handle.dd_r[thread_ind + p * 2 + 1] = handle.halo_rcvbuf[rcvbuf_ind + id * 6 + 5];
         }
         
         // Solve reduced system
         int ind = id * handle.sys_len_l[2];
-        thomas_on_reduced<REAL>(handle.aa_r, handle.cc_r, handle.dd_r, handle.sys_len_l[2], 1);
+        thomas_on_reduced<REAL>(handle.aa_r[thread_ind], handle.cc_r[thread_ind], handle.dd_r[thread_ind], handle.sys_len_l[2], 1);
         
         // Place result back into dd array
         for(int p = 0; p < mpi_handle.pdims[2]; p++) {
-          int rcvbuf_ind = p * handle.n_sys_l[2] * 2;
-          handle.halo_sndbuf[rcvbuf_ind + id * 2]     = handle.dd_r[p * 2];
-          handle.halo_sndbuf[rcvbuf_ind + id * 2 + 1] = handle.dd_r[p * 2 + 1];
+          int sndbuf_ind = p * handle.n_sys_l[2] * 2;
+          handle.halo_sndbuf[sndbuf_ind + id * 2]     = handle.dd_r[thread_ind + p * 2];
+          handle.halo_sndbuf[sndbuf_ind + id * 2 + 1] = handle.dd_r[thread_ind + p * 2 + 1];
         }
       }
     }
