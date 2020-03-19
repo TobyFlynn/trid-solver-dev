@@ -219,10 +219,10 @@ void tridInit(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int ndim, 
   handle.halo_rcvbuf = (REAL *) _mm_malloc(max * 3 * sizeof(REAL), SIMD_WIDTH);
   
   // Allocate memory for reduced system arrays
-  int num_threads = omp_get_num_threads();
+  int num_threads = omp_get_max_threads();
   max = 0;
   for(int i = 0; i < handle.ndim; i++) {
-    if(handle.sys_len_l[i] * handle.n_sys_l[i] > max) {
+    if(handle.sys_len_l[i] * num_threads > max) {
       max = handle.sys_len_l[i] * num_threads;
     }
   }
@@ -316,7 +316,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
         }
         
         // Solve reduced system
-        thomas_on_reduced<REAL>(handle.aa_r[thread_ind], handle.cc_r[thread_ind], handle.dd_r[thread_ind], handle.sys_len_l[0], 1);
+        thomas_on_reduced<REAL>(&handle.aa_r[thread_ind], &handle.cc_r[thread_ind], &handle.dd_r[thread_ind], handle.sys_len_l[0], 1);
         
         // Place result back into dd array
         for(int p = 0; p < mpi_handle.pdims[0]; p++) {
@@ -420,7 +420,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
         
         // Solve reduced system
         int ind = id * handle.sys_len_l[1];
-        thomas_on_reduced<REAL>(handle.aa_r[thread_ind], handle.cc_r[thread_ind], handle.dd_r[thread_ind], handle.sys_len_l[1], 1);
+        thomas_on_reduced<REAL>(&handle.aa_r[thread_ind], &handle.cc_r[thread_ind], &handle.dd_r[thread_ind], handle.sys_len_l[1], 1);
         
         // Place result back into dd array
         for(int p = 0; p < mpi_handle.pdims[1]; p++) {
@@ -534,7 +534,7 @@ void tridBatch(trid_handle<REAL> &handle, trid_mpi_handle &mpi_handle, int solve
         
         // Solve reduced system
         int ind = id * handle.sys_len_l[2];
-        thomas_on_reduced<REAL>(handle.aa_r[thread_ind], handle.cc_r[thread_ind], handle.dd_r[thread_ind], handle.sys_len_l[2], 1);
+        thomas_on_reduced<REAL>(&handle.aa_r[thread_ind], &handle.cc_r[thread_ind], &handle.dd_r[thread_ind], handle.sys_len_l[2], 1);
         
         // Place result back into dd array
         for(int p = 0; p < mpi_handle.pdims[2]; p++) {
